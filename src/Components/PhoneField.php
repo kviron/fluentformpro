@@ -261,7 +261,7 @@ class PhoneField extends BaseFieldManager
                         telInput.on("keyup change", function () {
                             if (typeof intlTelInputUtils !== 'undefined') { // utils are lazy loaded, so must check
                                 var currentText = iti.getNumber(intlTelInputUtils.numberFormat.E164);
-                                if (typeof currentText === 'string') { // sometimes the currentText is an object :)
+                                if (iti.isValidNumber() && typeof currentText === 'string') { // sometimes the currentText is an object :)
                                     iti.setNumber(currentText); // will autoformat because of formatOnDisplay=true
                                 }
                             }

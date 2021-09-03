@@ -168,7 +168,6 @@ if (!defined('ABSPATH')) {
     public function addContact($contact)
     {
         $response = $this->make_request('accounts', [], $method='GET');
-        dd($response);
         return new \WP_Error('error', $response['message']);
     }
 

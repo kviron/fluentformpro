@@ -64,20 +64,21 @@ class PayPalSettings
         }
 
         $isLive = self::isLive();
+
         // Check the current payment mode
         if ($isLive) {
-            // Test mode
-            if ($ipn) {
-                $paypal_uri = 'https://ipnpb.sandbox.paypal.com/cgi-bin/webscr';
-            } else {
-                $paypal_uri = $protocol . 'www.sandbox.paypal.com/cgi-bin/webscr';
-            }
-        } else {
             // Live mode
             if ($ipn) {
                 $paypal_uri = 'https://ipnpb.paypal.com/cgi-bin/webscr';
             } else {
                 $paypal_uri = $protocol . 'www.paypal.com/cgi-bin/webscr';
+            }
+        } else {
+            // Test mode
+            if ($ipn) {
+                $paypal_uri = 'https://ipnpb.sandbox.paypal.com/cgi-bin/webscr';
+            } else {
+                $paypal_uri = $protocol . 'www.sandbox.paypal.com/cgi-bin/webscr';
             }
         }
         return apply_filters('fluentform_paypal_url', $paypal_uri, $ssl_check, $ipn, $isLive);

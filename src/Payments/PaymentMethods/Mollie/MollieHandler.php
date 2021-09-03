@@ -18,7 +18,7 @@ class MollieHandler extends BasePaymentMethod
 
     public function init()
     {
-        add_filter('payment_method_settings_validation_'.$this->key, array($this, 'validateSettings'), 10, 2);
+        add_filter('fluentform_payment_method_settings_validation_'.$this->key, array($this, 'validateSettings'), 10, 2);
 
         if(!$this->isEnabled()) {
             return;
@@ -88,7 +88,7 @@ class MollieHandler extends BasePaymentMethod
     public function getGlobalFields()
     {
         return [
-            'label' => 'Mollie Settings',
+            'label' => 'Mollie',
             'fields' => [
                 [
                     'settings_key' => 'is_active',
@@ -124,7 +124,11 @@ class MollieHandler extends BasePaymentMethod
                     'placeholder' => 'Live API Key',
                     'inline_help' => 'Provide your live api key for your live payments',
                     'check_status' => 'yes'
-                ]
+                ],
+                [
+                    'type' => 'html',
+                    'html' => '<p>  <a target="_blank" rel="noopener" href="https://wpmanageninja.com/docs/fluent-form/payment-settings/how-to-integrate-mollie-with-wp-fluent-forms/">Please read the documentation</a> to learn how to setup <b>Mollie Payment </b> Gateway. </p>'
+                ],
             ]
         ];
     }

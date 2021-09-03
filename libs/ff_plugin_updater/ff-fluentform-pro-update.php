@@ -19,7 +19,8 @@ new FluentFormAddOnChecker( array(
 	// Also need to change in readme.txt and plugin header.
 	'version' => FLUENTFORMPRO_VERSION,
 	// The main URL of your store for license verification
-	'store_url' => 'https://wpmanageninja.com',
+    'store_url' => 'https://api.wpmanageninja.com/plugin',
+    'store_site' => 'https://wpmanageninja.com',
 	// Your name
 	'author' => 'WP Manage Ninja',
 	// The URL to renew or purchase a license

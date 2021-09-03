@@ -10,8 +10,10 @@ use FluentForm\App\Databases\Migrations\FormSubmissions;
 use FluentForm\App\Helpers\Helper;
 use FluentForm\Framework\Helpers\ArrayHelper;
 use FluentFormPro\Payments\Classes\CouponModel;
+use FluentFormPro\Payments\Classes\PaymentManagement;
 use FluentFormPro\Payments\Migrations\Migration;
 use FluentFormPro\Payments\PaymentMethods\Offline\OfflineProcessor;
+use FluentFormPro\Payments\PaymentMethods\Stripe\ConnectConfig;
 
 class AjaxEndpoints
 {
@@ -28,7 +30,11 @@ class AjaxEndpoints
             'get_coupons'                  => 'getCoupons',
             'enable_coupons'               => 'enableCoupons',
             'save_coupon'                  => 'saveCoupon',
-            'delete_coupon' => 'deleteCoupon'
+            'delete_coupon'                => 'deleteCoupon',
+            'get_stripe_connect_config'    => 'getStripeConnectConfig',
+            'disconnect_stripe_connection' => 'disconnectStripeConnect',
+            'get_pages'                    => 'getWpPages',
+            'cancel_subscription'          => 'cancelSubscription'
         ];
 
         if (isset($validRoutes[$route])) {
@@ -101,7 +107,7 @@ class AjaxEndpoints
         $method = sanitize_text_field($_REQUEST['method']);
         $settings = wp_unslash($_REQUEST['settings']);
 
-        $validationErrors = apply_filters('payment_method_settings_validation_' . $method, [], $settings);
+        $validationErrors = apply_filters('fluentform_payment_method_settings_validation_' . $method, [], $settings);
 
         if ($validationErrors) {
             wp_send_json_error([
@@ -109,6 +115,8 @@ class AjaxEndpoints
                 'errors'  => $validationErrors
             ], 423);
         }
+
+        $settings = apply_filters('fluentform_payment_method_settings_save_' . $method, $settings);
 
         update_option('fluentform_payment_settings_' . $method, $settings, 'yes');
 
@@ -203,6 +211,7 @@ class AjaxEndpoints
             $offlineProcessor->setSubmissionId($oldTransaction->submission_id);
             $offlineProcessor->changeSubmissionPaymentStatus($newStatus);
             $offlineProcessor->changeTransactionStatus($transactionId, $newStatus);
+            $offlineProcessor->recalculatePaidTotal();
         }
 
         wp_send_json_success([
@@ -225,7 +234,7 @@ class AjaxEndpoints
         $coupons = $couponModel->getCoupons(true);
         $errors = ob_get_clean();
 
-        if($errors) {
+        if ($errors) {
             (new CouponModel())->migrate();
             $coupons = $couponModel->getCoupons(true);
         }
@@ -264,31 +273,31 @@ class AjaxEndpoints
         $coupon = wp_unslash($_REQUEST['coupon']);
 
         $validator = fluentValidator($coupon, [
-            'title' => 'required',
-            'code' => 'required',
-            'amount' => 'required',
+            'title'       => 'required',
+            'code'        => 'required',
+            'amount'      => 'required',
             'coupon_type' => 'required',
-            'status' => 'required'
+            'status'      => 'required'
         ]);
 
         if ($validator->validate()->fails()) {
             $errors = $validator->errors();
             wp_send_json([
-                'errors' => $errors,
+                'errors'  => $errors,
                 'message' => 'Please fill up all the required fields'
             ], 423);
         }
 
         $couponId = false;
 
-        if(isset($coupon['id'])) {
+        if (isset($coupon['id'])) {
             $couponId = $coupon['id'];
             unset($coupon['id']);
         }
 
-        if($exist = (new CouponModel())->isCouponCodeAvailable($coupon['code'], $couponId)) {
+        if ($exist = (new CouponModel())->isCouponCodeAvailable($coupon['code'], $couponId)) {
             wp_send_json([
-                'errors' => [
+                'errors'  => [
                     'code' => [
                         'exist' => 'Same coupon code is already exists'
                     ]
@@ -297,14 +306,14 @@ class AjaxEndpoints
             ], 423);
         }
 
-        if($couponId) {
-            (new CouponModel())->update($couponId,$coupon);
+        if ($couponId) {
+            (new CouponModel())->update($couponId, $coupon);
         } else {
             $couponId = (new CouponModel())->insert($coupon);
         }
 
         wp_send_json([
-            'message' => __('Coupon has been created successfully', 'fluentformpro'),
+            'message'   => __('Coupon has been created successfully', 'fluentformpro'),
             'coupon_id' => $couponId
         ], 200);
 
@@ -315,9 +324,59 @@ class AjaxEndpoints
         $couponId = intval($_REQUEST['coupon_id']);
         (new CouponModel())->delete($couponId);
         wp_send_json([
-            'message' => __('Coupon has been successfully deleted', 'fluentformpro'),
+            'message'   => __('Coupon has been successfully deleted', 'fluentformpro'),
             'coupon_id' => $couponId
         ], 200);
+    }
+
+    public function getStripeConnectConfig()
+    {
+        wp_send_json_success(ConnectConfig::getConnectConfig());
+    }
+
+    public function disconnectStripeConnect()
+    {
+        return ConnectConfig::disconnect($_REQUEST, true);
+    }
+
+    public function getWpPages()
+    {
+        $pages = wpFluent()->table('posts')
+            ->select(['ID', 'post_title'])
+            ->where('post_status', 'publish')
+            ->where('post_type', 'page')
+            ->orderBy('ID', 'ASC')
+            ->get();
+
+        wp_send_json_success([
+            'pages' => $pages
+        ]);
+    }
+
+    public function cancelSubscription()
+    {
+        $subscriptionId = intval(ArrayHelper::get($_REQUEST, 'subscription_id'));
+
+        $subscription = fluentFormApi('submissions')->getSubscription($subscriptionId);
+
+        if (!$subscription) {
+            wp_send_json_error([
+                'message' => 'Subscription could not be found'
+            ], 423);
+        }
+
+        $response = (new PaymentManagement())->cancelSubscription($subscription);
+
+        if(is_wp_error($response)) {
+            wp_send_json_error([
+                'message' => $response->get_error_code().' - '.$response->get_error_message()
+            ], 423);
+        }
+
+        wp_send_json_success([
+            'message' => $response
+        ]);
+
     }
 
 }

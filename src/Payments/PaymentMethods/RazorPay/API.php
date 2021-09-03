@@ -94,13 +94,17 @@ class API
         }
 
         $status = $vendorTransaction['status'];
-        do_action('fluentform_ipn_mollie_action_'.$status, $submission, $vendorTransaction, $data);
+
+        if($status == 'captured') {
+            $status = 'paid';
+        }
+
+        do_action('fluentform_ipn_razorpay_action_'.$status, $submission, $vendorTransaction, $data);
 
         if($refundAmount = ArrayHelper::get($vendorTransaction, 'amountRefunded.value')) {
             $refundAmount = intval($refundAmount * 100); // in cents
-            do_action('fluentform_ipn_mollie_action_refunded', $refundAmount, $submission, $vendorTransaction, $data);
+            do_action('fluentform_ipn_razorpay_action_refunded', $refundAmount, $submission, $vendorTransaction, $data);
         }
-
     }
 
     public function makeApiCall($path, $args, $formId, $method = 'GET')

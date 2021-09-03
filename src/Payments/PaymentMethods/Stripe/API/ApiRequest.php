@@ -23,7 +23,7 @@ class ApiRequest
      * Stripe API Endpoint
      */
     private static $ENDPOINT = 'https://api.stripe.com/v1/';
-    const STRIPE_API_VERSION = '2019-05-16';
+    const STRIPE_API_VERSION = '2020-08-27';
     /**
      * Secret API Key.
      * @var string
@@ -67,9 +67,9 @@ class ApiRequest
     public static function get_user_agent()
     {
         $app_info = array(
-            'name' => 'WP Fluent Forms',
+            'name' => 'Fluent Forms',
             'version' => FLUENTFORMPRO_VERSION,
-            'url' => 'https://wpfluentforms.com/',
+            'url' => site_url(),
             'partner_id' => 'pp_partner_FN62GfRLM2Kx5d'
         );
         return array(
@@ -115,7 +115,6 @@ class ApiRequest
     public static function request($request, $api = 'charges', $method = 'POST')
     {
         $headers = self::get_headers();
-        $idempotency_key = '';
         if ('charges' === $api && 'POST' === $method) {
             $customer = !empty($request['customer']) ? $request['customer'] : '';
             $source = !empty($request['source']) ? $request['source'] : $customer;
@@ -128,14 +127,31 @@ class ApiRequest
                 'method' => $method,
                 'headers' => $headers,
                 'body' => apply_filters('fluentform_stripe_request_body', $request, $api),
-                'timeout' => 70,
+                'timeout' => 50,
             )
         );
         if (is_wp_error($response) || empty($response['body'])) {
             return new \WP_Error('stripe_error', __('There was a problem connecting to the Stripe API endpoint.', 'fluentformpro'));
         }
 
-        return json_decode($response['body']);
+        $body = json_decode(wp_remote_retrieve_body($response));
+        // check if it's a stripe error or not
+        $responseCode = wp_remote_retrieve_response_code($response);
+
+        if($responseCode > 299) {
+            $code = 'general_error';
+            if(!empty($body->error->code)) {
+                $code = $body->error->code;
+            }
+            $message = 'Stripe General Error';
+            if(!empty($body->error->message)) {
+                $message = $body->error->message;
+            }
+
+            return new \WP_Error($code, $message, $body);
+        }
+
+        return $body;
     }
 
     /**

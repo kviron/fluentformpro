@@ -202,11 +202,14 @@ class MultiPaymentComponent extends BaseFieldManager
             $elMarkup .= '<select ' . $this->buildAttributes($selectAtts, $form) . '>';
 
             if($placeholder = ArrayHelper::get($data, 'settings.placeholder')) {
-                $optionAtts = $this->buildAttributes([
-                    'value' => '',
-                    'data-payment_value' => '',
-                    'data-calc_value' => ''
-                ], $form);
+                $optionAtts = '';
+                foreach ([
+                             'value' => "",
+                             'data-payment_value' => '',
+                             'data-calc_value' => ''
+                         ] as $key => $value) {
+                    $optionAtts .= $key . '="' . $value . '" ';
+                }
                 $elMarkup .= '<option '.$optionAtts.'>'.$placeholder.'</option>';
             }
 
@@ -259,13 +262,13 @@ class MultiPaymentComponent extends BaseFieldManager
             $atts = $this->buildAttributes($data['attributes'], $form);
             $id = $this->getUniqueid(str_replace(['[', ']'], ['', ''], $data['attributes']['name']));
 
-            if ($hasImageOption && $option['image']) {
+            if ($hasImageOption && !empty($option['image'])) {
                 $parentClass .= ' ff-el-image-holder';
             }
 
             $elMarkup .= "<div class='{$parentClass}'>";
             // Here we can push the visual items
-            if ($hasImageOption && $option['image']) {
+            if ($hasImageOption && !empty($option['image'])) {
                 $elMarkup .= "<label style='background-image: url({$option['image']})' class='ff-el-image-input-src' for={$id}></label>";
             }
 

@@ -6,12 +6,13 @@ if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly.
 }
 
+use FluentForm\App\Helpers\Helper;
 use FluentForm\App\Services\FormBuilder\ShortCodeParser;
 use FluentForm\Framework\Helpers\ArrayHelper;
-use FluentFormPro\Payments\Components\PaymentMethods;
 use FluentFormPro\Payments\PaymentHelper;
 use FluentFormPro\Payments\PaymentMethods\BaseProcessor;
 use FluentFormPro\Payments\PaymentMethods\Stripe\API\CheckoutSession;
+use FluentFormPro\Payments\PaymentMethods\Stripe\API\Plan;
 
 class StripeProcessor extends BaseProcessor
 {
@@ -21,48 +22,46 @@ class StripeProcessor extends BaseProcessor
 
     public function init()
     {
-        add_action('fluentform_process_payment_' . $this->method, array($this, 'handlePaymentAction'), 10, 4);
+        add_action('fluentform_process_payment_stripe_hosted', array($this, 'handlePaymentAction'), 10, 6);
         add_action('fluent_payment_frameless_' . $this->method, array($this, 'handleSessionRedirectBack'));
     }
 
-    public function handlePaymentAction($submissionId, $submissionData, $form, $methodSettings)
+    public function handlePaymentAction($submissionId, $submissionData, $form, $methodSettings, $hasSubscriptions, $totalPayable)
     {
         $this->setSubmissionId($submissionId);
         $this->form = $form;
         $submission = $this->getSubmission();
+        $paymentTotal = $this->getAmountTotal();
 
+        if (!$paymentTotal && !$hasSubscriptions) {
+            return false;
+        }
 
-        $uniqueHash = md5($submission->id . '-' . $form->id . '-' . time() . '-' . mt_rand(100, 999));
-
-        $transactionId = $this->insertTransaction([
-            'transaction_type' => 'onetime',
-            'transaction_hash' => $uniqueHash,
-            'payment_total'    => $this->getAmountTotal(),
-            'status'           => 'pending',
-            'currency'         => strtoupper($submission->currency),
-            'payment_mode'     => $this->getPaymentMode()
-        ]);
-
-        $transaction = $this->getTransaction($transactionId);
+        // Create the initial transaction here
+        $transaction = $this->createInitialPendingTransaction($submission, $hasSubscriptions);
 
         $this->handleCheckoutSession($transaction, $submission, $form, $methodSettings);
     }
 
     public function handleCheckoutSession($transaction, $submission, $form, $methodSettings)
     {
+
         $formSettings = PaymentHelper::getFormSettings($form->id);
 
-        $successUrl = add_query_arg([
+        $args = [
             'fluentform_payment' => $submission->id,
             'payment_method'     => $this->method,
             'transaction_hash'   => $transaction->transaction_hash,
             'type'               => 'success'
-        ], home_url('/'));
+        ];
+
+
+        $successUrl = add_query_arg($args, site_url('index.php'));
 
         $cancelUrl = $submission->source_url;
 
         if (!wp_http_validate_url($cancelUrl)) {
-            $cancelUrl = home_url($cancelUrl);
+            $cancelUrl = site_url($cancelUrl);
         }
 
         $paymentMethods = ArrayHelper::get($formSettings, 'stripe_checkout_methods', ['card']);
@@ -77,14 +76,14 @@ class StripeProcessor extends BaseProcessor
             'billing_address_collection' => 'auto',
             'payment_method_types'       => $paymentMethods,
             'client_reference_id'        => $submission->id,
-            'submit_type'                => 'auto',
-            'mode'                       => 'payment',
+            'customer_email'             => $transaction->payer_email,
             'metadata'                   => [
                 'submission_id'  => $submission->id,
                 'form_id'        => $form->id,
-                'transaction_id' => $transaction->id
+                'transaction_id' => ($transaction) ? $transaction->id : ''
             ]
         ];
+
 
         if ($formSettings['transaction_type'] == 'donation') {
             $checkoutArgs['submit_type'] = 'donate';
@@ -104,13 +103,63 @@ class StripeProcessor extends BaseProcessor
             $checkoutArgs['line_items'] = $lineItems;
         }
 
-        $checkoutArgs['payment_intent_data'] = $this->getPaymentIntentData($transaction, $submission, $form);
-
         $receiptEmail = PaymentHelper::getCustomerEmail($submission);
 
         if ($receiptEmail) {
             $checkoutArgs['customer_email'] = $receiptEmail;
-            $checkoutArgs['payment_intent_data']['receipt_email'] = $receiptEmail;
+        }
+
+        if ($transaction->transaction_type == 'subscription') {
+
+            $subscriptions = $this->getSubscriptions();
+            $subscription = $subscriptions[0];
+
+            if ($subscription->initial_amount) {
+                if (!isset($checkoutArgs['line_items'])) {
+                    $checkoutArgs['line_items'] = [];
+                }
+                $price = $subscription->initial_amount;
+                if (PaymentHelper::isZeroDecimal($transaction->currency)) {
+                    $price = intval($price / 100);
+                }
+                $checkoutArgs['line_items'][] = [
+                    'amount'   => $price,
+                    'currency' => $transaction->currency,
+                    'name'     => 'Signup fee for ' . $subscription->plan_name,
+                    'quantity' => 1
+                ];
+            }
+
+            $stripePlan = Plan::getSubscriptionPlanBySubscription($subscription, $transaction->currency);
+
+            if(is_wp_error($stripePlan)) {
+                $this->handlePaymentChargeError($stripePlan->get_error_message(), $submission, $transaction);
+            }
+
+            $this->updateSubscription($subscription->id, [
+                'vendor_plan_id' => $stripePlan->id
+            ]);
+
+            $subsArgs = [
+                'items' => [
+                    [
+                        'plan' => $stripePlan->id
+                    ]
+                ]
+            ];
+
+            if ($subscription->trial_days) {
+                $subsArgs['trial_period_days'] = $subscription->trial_days;
+            }
+
+            $checkoutArgs['subscription_data'] = $subsArgs;
+
+        } else {
+            $checkoutArgs['submit_type'] = 'auto';
+            $checkoutArgs['payment_intent_data'] = $this->getPaymentIntentData($transaction, $submission, $form);
+            if ($receiptEmail && ArrayHelper::get($formSettings, 'disable_stripe_payment_receipt') != 'yes') {
+                $checkoutArgs['payment_intent_data']['receipt_email'] = $receiptEmail;
+            }
         }
 
         $checkoutArgs = apply_filters('fluentform_stripe_checkout_args', $checkoutArgs, $submission, $transaction, $form);
@@ -152,47 +201,16 @@ class StripeProcessor extends BaseProcessor
         ], 200);
     }
 
-    private function getPaymentIntentData($transaction, $submission, $form)
+    protected function getPaymentIntentData($transaction, $submission, $form)
     {
         $data = [
             'capture_method'       => 'automatic',
             'description'          => $form->title,
-            'statement_descriptor' => $this->getDescriptor($form->title)
+            'statement_descriptor' => StripeSettings::getPaymentDescriptor($form),
         ];
 
         $paymentSettings = PaymentHelper::getFormSettings($form->id, 'admin');
-
-        $providedDescriptor = ArrayHelper::get($paymentSettings, 'stripe_descriptor');
-
-        if($providedDescriptor) {
-            $data['statement_descriptor'] = $this->getDescriptor($providedDescriptor);
-            $data['description'] = $providedDescriptor;
-        }
-
-        $intentMeta = [
-            'submission_id'  => $submission->id,
-            'form_id'        => $form->id,
-            'transaction_id' => $transaction->id,
-            'wp_plugin'      => 'WP Fluent Forms Pro',
-            'form_title'     => $form->title
-        ];
-
-        if (ArrayHelper::get($paymentSettings, 'push_meta_to_stripe') == 'yes') {
-            $metaItems = ArrayHelper::get($paymentSettings, 'stripe_meta_data', []);
-            foreach ($metaItems as $metaItem) {
-                if ($itemValue = ArrayHelper::get($metaItem, 'item_value')) {
-                    $metaData[ArrayHelper::get($metaItem, 'label', 'item')] = $itemValue;
-                }
-            }
-            $metaData = ShortCodeParser::parse($metaData, $submission->id, $submission->response);
-            $metaData = array_filter($metaData);
-            foreach ($metaData as $itemKey => $value) {
-                if (is_string($value) || is_numeric($value)) {
-                    $metaData[$itemKey] = strip_tags($value);
-                }
-            }
-            $intentMeta = array_merge($intentMeta, $metaData);
-        }
+        $intentMeta = $this->getIntentMetaData($submission, $form, $transaction, $paymentSettings);
 
         $data['metadata'] = $intentMeta;
         return $data;
@@ -202,51 +220,41 @@ class StripeProcessor extends BaseProcessor
     {
         $orderItems = $this->getOrderItems();
 
-        $formattedItems = [];
-        $priceSubtotal = 0;
-
         $discountItems = $this->getDiscountItems();
+
+        $discountTotal = 0;
+        foreach ($discountItems as $item) {
+            $discountTotal += $item->line_total;
+        }
+
+        $orderTotal = 0;
+        foreach ($orderItems as $orderItem) {
+            $orderTotal += $orderItem->line_total;
+        }
+
+        $formattedItems = [];
 
         foreach ($orderItems as $item) {
             $price = $item->item_price;
+
+            if($discountTotal) {
+                $price = intval($price - ($discountTotal / $orderTotal) * $price);
+            }
+
             if (PaymentHelper::isZeroDecimal($currency)) {
                 $price = intval($price / 100);
             }
-            $quantity = ($item->quantity) ? $item->quantity : 1;
+
+            $quantity = $item->quantity ?: 1;
+
             $stripeLine = [
-                'price_data' => [
-                    'currency'     => $currency,
-                    'unit_amount'  => $price,
-                    'product_data' => [
-                        'name' => $item->item_name
-                    ]
-                ],
-                'quantity'   => $quantity
+                'amount'   => $price,
+                'currency' => $currency,
+                'name'     => $item->item_name,
+                'quantity' => $quantity
             ];
-            $lineTotal = $quantity * $price;
-            $priceSubtotal += $lineTotal;
+
             $formattedItems[] = $stripeLine;
-        }
-
-        if($discountItems) {
-            $discountTotal = 0;
-            foreach ($discountItems as $discountItem) {
-                $discountTotal += $discountItem->line_total;
-            }
-
-            if (PaymentHelper::isZeroDecimal($currency)) {
-                $discountTotal = intval($discountTotal / 100);
-            }
-
-            $newDiscountItems = [];
-
-            foreach ($formattedItems as $item) {
-                $baseAmount = $item['price_data']['unit_amount'];
-                $item['price_data']['unit_amount'] = intval($baseAmount - ($discountTotal / $priceSubtotal) * $baseAmount);
-                $newDiscountItems[] = $item;
-            }
-
-            $formattedItems = $newDiscountItems;
         }
 
         return $formattedItems;
@@ -260,21 +268,25 @@ class StripeProcessor extends BaseProcessor
 
         $submission = $this->getSubmission();
 
-        $transactionHash = sanitize_text_field($data['transaction_hash']);
-        $transaction = $this->getTransaction($transactionHash, 'transaction_hash');
-
-        if (!$transaction || !$submission) {
+        if (!$submission) {
             return;
         }
+
         if ($type == 'success') {
             if ($this->getMetaData('is_form_action_fired') == 'yes') {
                 $returnData = $this->getReturnData();
             } else {
                 $sessionId = $this->getMetaData('stripe_session_id');
                 $session = CheckoutSession::retrieve($sessionId, [
-                    'expand' => ['payment_intent.customer']
+                    'expand' => [
+                        'subscription.latest_invoice.payment_intent',
+                        'payment_intent'
+                    ]
                 ], $submission->form_id);
-                if ($session && !is_wp_error($session) && $session->payment_intent && $paymentStatus = $this->getIntentSuccessName($session->payment_intent)) {
+
+                if ($session && !is_wp_error($session) && $session->customer) {
+                    $transactionHash = sanitize_text_field($data['transaction_hash']);
+                    $transaction = $this->getTransaction($transactionHash, 'transaction_hash');
                     $returnData = $this->processStripeSession($session, $submission, $transaction);
                 } else {
                     $error = __('Sorry! No Valid payment session found. Please try again');
@@ -309,42 +321,40 @@ class StripeProcessor extends BaseProcessor
     public function processStripeSession($session, $submission, $transaction)
     {
         $this->setSubmissionId($submission->id);
-        $updateData = [
-            'charge_id'    => $session->payment_intent->id,
-            'status'       => 'paid',
-            'payment_note' => maybe_serialize($session->payment_intent)
-        ];
-        if (!empty($session->payment_intent->charges->data[0])) {
-            $charge = $session->payment_intent->charges->data[0];
-            if (!empty($charge->billing_details)) {
-                $updateData['payer_name'] = $charge->billing_details->name;
-                $updateData['payer_email'] = $charge->billing_details->email;
-                $updateData['billing_address'] = $this->formatAddress($charge->billing_details->address);
-            }
 
-            if (!empty($charge->shipping) && !empty($charge->shipping->address)) {
-                $updateData['shipping_address'] = $this->formatAddress($charge->shipping->address);
-            }
+        if($transaction->status == 'paid') {
+            return $this->getReturnData();
+        }
 
-            if (!empty($charge->payment_method_details->card)) {
-                $card = $charge->payment_method_details->card;
-                $updateData['card_brand'] = $card->brand;
-                $updateData['card_last_4'] = $card->last4;
+        $invoice = empty($session->subscription->latest_invoice) ? $session : $session->subscription->latest_invoice;
+
+        $paymentStatus = $this->getIntentSuccessName($invoice->payment_intent);
+
+        $this->changeSubmissionPaymentStatus($paymentStatus);
+
+        if($transaction->transaction_type == 'subscription') {
+            $subscriptions = $this->getSubscriptions();
+
+            if($subscriptions) {
+                $this->processSubscriptionSuccess($subscriptions, $invoice, $submission);
+
+                $vendorSubscription = $session->subscription;
+                if($vendorSubscription) {
+                    Plan::maybeSetCancelAt($subscriptions[0], $vendorSubscription);
+                }
             }
         }
 
-        $isNew = $this->getMetaData('is_form_action_fired') == 'yes';
-        $paymentStatus = $this->getIntentSuccessName($session->payment_intent);
-        $this->updateTransaction($transaction->id, $updateData);
-        $this->changeSubmissionPaymentStatus($paymentStatus);
-        $this->changeTransactionStatus($transaction->id, $paymentStatus);
+        $this->processOneTimeSuccess($invoice, $transaction, $paymentStatus);
+
         $returnData = $this->completePaymentSubmission(false);
         $this->recalculatePaidTotal();
-        $returnData['is_new'] = $isNew;
+        $returnData['is_new'] = $this->getMetaData('is_form_action_fired') === 'yes';
+
         return $returnData;
     }
 
-    private function getIntentSuccessName($intent)
+    protected function getIntentSuccessName($intent)
     {
         if (!$intent || !$intent->status) {
             return false;
@@ -362,7 +372,7 @@ class StripeProcessor extends BaseProcessor
         return false;
     }
 
-    private function getDescriptor($title)
+    protected function getDescriptor($title)
     {
         $illegal = array('<', '>', '"', "'");
         // Remove slashes
@@ -373,7 +383,7 @@ class StripeProcessor extends BaseProcessor
         return substr($descriptor, 0, 22);
     }
 
-    private function formatAddress($address)
+    protected function formatAddress($address)
     {
         $addressArray = [
             'line1'       => $address->line1,
@@ -389,13 +399,12 @@ class StripeProcessor extends BaseProcessor
     public function handleRefund($event)
     {
         $data = $event->data->object;
-        $chargeId = $data->payment_intent;
 
+        $chargeId = $data->payment_intent;
         // Get the Transaction from database
         $transaction = wpFluent()->table('fluentform_transactions')
             ->where('charge_id', $chargeId)
             ->where('payment_method', 'stripe')
-            ->where('transaction_type', 'onetime')
             ->first();
 
         if (!$transaction) {
@@ -416,11 +425,7 @@ class StripeProcessor extends BaseProcessor
             $amountRefunded = $amountRefunded * 100;
         }
 
-        $status = 'refunded';
-        if ($amountRefunded < $transaction->payment_total) {
-            $status = 'partially-refunded';
-        }
-
+        // Remove All Existing Refunds
         wpFluent()->table('fluentform_transactions')
             ->where('submission_id', $submission->id)
             ->where('transaction_type', 'refund')
@@ -434,5 +439,223 @@ class StripeProcessor extends BaseProcessor
     {
         $stripeSettings = StripeSettings::getSettings();
         return $stripeSettings['payment_mode'];
+    }
+
+    public function processSubscriptionSuccess($subscriptions, $invoice, $submission)
+    {
+        foreach ($subscriptions as $subscription) {
+            $subscriptionStatus = 'active';
+
+            if ($subscription->trial_days) {
+                $subscriptionStatus = 'trialling';
+            }
+
+            $updateData = [
+                'vendor_customer_id' => $invoice->customer,
+                'vendor_response'    => maybe_serialize($invoice),
+            ];
+
+            if(!$subscription->bill_count && $subscriptionStatus == 'active') {
+                $updateData['bill_count'] = 1;
+            }
+
+            if (!$subscription->vendor_subscription_id) {
+                $updateData['vendor_subscription_id'] = $invoice->subscription;
+            }
+
+            $this->updateSubscription($subscription->id, $updateData);
+            $subscription = fluentFormApi('submissions')->getSubscription($subscription->id);
+            $this->updateSubscriptionStatus($subscription, $subscriptionStatus);
+        }
+
+        do_action('ff_log_data', [
+            'parent_source_id' => $submission->form_id,
+            'source_type'      => 'submission_item',
+            'source_id'        => $submission->id,
+            'component'        => 'Payment',
+            'status'           => 'success',
+            'title'            => 'Stripe Subscription Charged',
+            'description'      => __('Stripe recurring subscription successfully initiated', 'fluentformpro')
+        ]);
+
+        if (!empty($invoice->payment_intent->charges->data[0])) {
+            $charge = $invoice->payment_intent->charges->data[0];
+            $this->recordStripeBillingAddress($charge, $submission);
+        }
+    }
+
+    protected function recordStripeBillingAddress($charge, $submission)
+    {
+        if(!is_array($submission->response)) {
+            $submission->response = json_decode($submission->response, true);
+        }
+
+        if (isset($submission->response['__checkout_billing_address_details'])) {
+            return;
+        }
+
+        if (empty($charge->billing_details)) {
+            return;
+        }
+
+        $billingDetails = $charge->billing_details;
+        if (!empty($billingDetails->address)) {
+            $submission->response['__checkout_billing_address_details'] = $billingDetails->address;
+        }
+        if (!empty($billingDetails->phone)) {
+            $submission->response['__stripe_phone'] = $billingDetails->phone;
+        }
+        if (!empty($billingDetails->name)) {
+            $submission->response['__stripe_name'] = $billingDetails->name;
+        }
+        if (!empty($billingDetails->email)) {
+            $submission->response['__stripe_email'] = $billingDetails->email;
+        }
+
+        $this->updateSubmission($submission->id, [
+            'response' => json_encode($submission->response)
+        ]);
+
+        do_action('ff_log_data', [
+            'parent_source_id' => $submission->form_id,
+            'source_type'      => 'submission_item',
+            'source_id'        => $submission->id,
+            'component'        => 'Payment',
+            'status'           => 'info',
+            'title'            => 'Stripe Billing Address Logged',
+            'description'      => __('Billing address from stripe has been logged in the submission data', 'fluentformpro')
+        ]);
+    }
+
+    protected function processOneTimeSuccess($invoice, $transaction, $paymentStatus)
+    {
+        if ($transaction) {
+            $updateData = [
+                'charge_id'    => $invoice->payment_intent ? $invoice->payment_intent->id : null,
+                'status'       => 'paid',
+                'payment_note' => maybe_serialize($invoice->payment_intent)
+            ];
+
+            $updateData = array_merge($updateData, $this->retrieveCustomerDetailsFromInvoice($invoice));
+
+            $this->updateTransaction($transaction->id, $updateData);
+
+            $this->changeTransactionStatus($transaction->id, $paymentStatus);
+        }
+    }
+
+    protected function getIntentMetaData($submission, $form, $transaction, $paymentSettings = false)
+    {
+        if (!$paymentSettings) {
+            $paymentSettings = StripeSettings::getSettings();
+        }
+
+        $intentMeta = [
+            'submission_id'  => $submission->id,
+            'form_id'        => $form->id,
+            'transaction_id' => $transaction->id,
+            'wp_plugin'      => 'Fluent Forms Pro',
+            'form_title'     => $form->title
+        ];
+
+        if (ArrayHelper::get($paymentSettings, 'push_meta_to_stripe') == 'yes') {
+            $metaItems = ArrayHelper::get($paymentSettings, 'stripe_meta_data', []);
+
+            foreach ($metaItems as $metaItem) {
+                if ($itemValue = ArrayHelper::get($metaItem, 'item_value')) {
+                    $metaData[ArrayHelper::get($metaItem, 'label', 'item')] = $itemValue;
+                }
+            }
+
+            $metaData = ShortCodeParser::parse($metaData, $submission->id, $submission->response);
+
+            $metaData = array_filter($metaData);
+
+            foreach ($metaData as $itemKey => $value) {
+                if (is_string($value) || is_numeric($value)) {
+                    $metaData[$itemKey] = strip_tags($value);
+                }
+            }
+
+            $intentMeta = array_merge($intentMeta, $metaData);
+        }
+
+        return $intentMeta;
+    }
+
+    protected function retrieveCustomerDetailsFromInvoice($invoice)
+    {
+        $customer = [];
+
+        if (!empty($invoice->payment_intent->charges->data[0])) {
+            $charge = $invoice->payment_intent->charges->data[0];
+
+            $customer = $this->retrieveCustomerDetailsFromCharge($charge);
+
+            $customer = array_merge($customer, [
+                'payer_email' => $invoice->customer_email,
+                'payer_name'  => $charge->billing_details->name,
+            ]);
+        }
+
+        return $customer;
+    }
+
+    protected function retrieveCustomerDetailsFromCharge($charge)
+    {
+        $customer = [];
+
+        if (!empty($charge->billing_details)) {
+            $customer['billing_address'] = $this->formatAddress($charge->billing_details->address);
+        }
+
+        if (!empty($charge->shipping) && !empty($charge->shipping->address)) {
+            $customer['shipping_address'] = $this->formatAddress($charge->shipping->address);
+        }
+
+        if (!empty($charge->payment_method_details->card)) {
+            $card = $charge->payment_method_details->card;
+            $customer['card_brand'] = $card->brand;
+            $customer['card_last_4'] = $card->last4;
+        }
+
+        return $customer;
+    }
+
+    protected function handlePaymentChargeError($message, $submission, $transaction, $charge = false, $type = 'general')
+    {
+        do_action('fluentform_payment_stripe_failed', $submission, $transaction, $this->form->id, $charge, $type);
+        do_action('fluentform_payment_failed', $submission, $transaction, $this->form->id, $charge, $type);
+
+        if ($transaction) {
+            $this->changeTransactionStatus($transaction->id, 'failed');
+        }
+
+        $this->changeSubmissionPaymentStatus('failed');
+
+        if ($message) {
+            do_action('ff_log_data', [
+                'parent_source_id' => $submission->form_id,
+                'source_type'      => 'submission_item',
+                'source_id'        => $submission->id,
+                'component'        => 'Payment',
+                'status'           => 'error',
+                'title'            => 'Stripe Payment Error',
+                'description'      => $message
+            ]);
+        }
+
+        wp_send_json([
+            'errors'      => 'Stripe Error: ' . $message,
+            'append_data' => [
+                '__entry_intermediate_hash' => Helper::getSubmissionMeta($submission->id, '__entry_intermediate_hash')
+            ]
+        ], 423);
+    }
+
+    public function recordSubscriptionCharge($subscription, $transactionData)
+    {
+        $this->setSubmissionId($subscription->submission_id);
+        return $this->maybeInsertSubscriptionCharge($transactionData);
     }
 }

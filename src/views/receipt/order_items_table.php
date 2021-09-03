@@ -16,8 +16,6 @@
             <td><?php echo $order_item->formatted_line_total; ?></td>
         </tr>
     <?php endforeach; ?>
-
-
     </tbody>
     <tfoot>
     <?php if($discount_items): ?>

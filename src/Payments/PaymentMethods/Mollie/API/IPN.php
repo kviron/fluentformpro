@@ -67,6 +67,7 @@ class IPN
 
         $defaults = $_REQUEST;
         $encoded_data_array = wp_parse_args($encoded_data_array, $defaults);
+
         $this->handleIpn($encoded_data_array);
         exit(200);
     }
@@ -78,6 +79,8 @@ class IPN
             return;
         }
         $submission = wpFluent()->table('fluentform_submissions')->where('id', $submissionId)->first();
+
+
         if (!$submission) {
             return;
         }
@@ -93,12 +96,15 @@ class IPN
                 'title'            => 'Mollie Payment Webhook Error',
                 'description'      => $vendorTransaction->get_error_message()
             ]);
+            return false;
         }
 
         $status = $vendorTransaction['status'];
+
         do_action('fluentform_ipn_mollie_action_'.$status, $submission, $vendorTransaction, $data);
 
-        if($refundAmount = ArrayHelper::get($vendorTransaction, 'amountRefunded.value')) {
+        $refundedAmount = $refundAmount = ArrayHelper::get($vendorTransaction, 'amountRefunded.value');
+        if(intval($refundedAmount)) {
             $refundAmount = intval($refundAmount * 100); // in cents
             do_action('fluentform_ipn_mollie_action_refunded', $refundAmount, $submission, $vendorTransaction, $data);
         }

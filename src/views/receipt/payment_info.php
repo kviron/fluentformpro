@@ -9,7 +9,7 @@
     </div>
     <div class="ffp_payment_info_item ffp_payment_info_item_total">
         <div class="ffp_item_heading"><?php _e('Total:','fluentformpro');?></div>
-        <div class="ffp_item_value"><?php echo $orderTotal; ?></div>
+        <div class="ffp_item_value"><?php echo $totalPaid; ?></div>
     </div>
     <?php if($submission->payment_method): ?>
         <div class="ffp_payment_info_item ffp_payment_info_item_payment_method">

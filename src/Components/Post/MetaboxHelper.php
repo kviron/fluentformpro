@@ -21,10 +21,21 @@ class MetaboxHelper
 
         $meta_box_registry = rwmb_get_registry( 'meta_box' );
         $args = [
-            'object_type' => 'post',
-            'post_types'  => [$postType],
+            'object_type' => 'post'
         ];
         $meta_boxes = $meta_box_registry->get_by( $args );
+
+        $validBoxes = [];
+
+        foreach ($meta_boxes as $key => $meta_box) {
+            if(empty($meta_box->meta_box)) {
+                continue;
+            }
+            $postTypes = ArrayHelper::get($meta_box->meta_box, 'post_types',  []);
+            if($postTypes && in_array($postType, $postTypes)) {
+                $validBoxes[$key] = $meta_box;
+            }
+        }
 
         return self::classifyFields($meta_boxes, $withRaw);
     }

@@ -7,6 +7,7 @@ if (!defined('ABSPATH')) {
 }
 
 use FluentFormPro\Payments\Orders\OrderData;
+use FluentFormPro\Payments\PaymentHelper;
 
 class PaymentReceipt
 {
@@ -14,6 +15,9 @@ class PaymentReceipt
     private $entry;
 
     private $orderItems = null;
+
+    private $subscriptions = null;
+    private $subscriptionTotal = null;
 
     private $discountItems = null;
 
@@ -28,7 +32,8 @@ class PaymentReceipt
             'receipt' => 'renderReceipt',
             'summary' => 'paymentInfo',
             'summary_list' => 'paymentInfoTable',
-            'order_items' => 'itemDetails'
+            'order_items' => 'itemDetails',
+	        'subscription_items' => 'subscriptionDetails'
         ];
 
         $submissionMaps = [
@@ -54,7 +59,7 @@ class PaymentReceipt
     public function getSubmissionValue($property)
     {
         if($property == 'payment_total') {
-            return OrderData::calculateOrderItemsTotal($this->getOrderItems(), true, $this->entry->currency, $this->getDiscountItems());
+            return OrderData::getTotalPaid($this->entry);
         }
 
         $value = '';
@@ -69,7 +74,7 @@ class PaymentReceipt
         return ucfirst($value);
     }
 
-    private function getOrderItems()
+    public function getOrderItems()
     {
         if (!is_null($this->orderItems)) {
             return $this->orderItems;
@@ -79,7 +84,21 @@ class PaymentReceipt
         return $this->orderItems;
     }
 
-    protected function getDiscountItems()
+	private function getSubscriptions()
+	{
+		if (!is_null($this->subscriptions)) {
+			return $this->subscriptions;
+		}
+
+		list($subscriptions, $total) = OrderData::getSubscriptionsAndPaymentTotal($this->entry);
+
+		$this->subscriptions = $subscriptions;
+		$this->subscriptionTotal = PaymentHelper::formatMoney($total, $this->entry->currency);
+
+		return $this->subscriptions;
+    }
+
+    public function getDiscountItems()
     {
         if (!is_null($this->discountItems)) {
             return $this->discountItems;
@@ -101,9 +120,16 @@ class PaymentReceipt
 
         $html .= $this->paymentInfo();
 
+        if ($this->orderItems) {
+	        $html .= '<h4>' . __('Order Details', 'fluentformpro') . '</h4>';
+	        $html .= $this->itemDetails();
+        }
 
-        $html .= '<h4>' . __('Order Details', 'fluentformpro') . '</h4>';
-        $html .= $this->itemDetails();
+        if ($this->subscriptions) {
+        	$html .= '<h4>' . __('Subscriptions', 'fluentformpro') . '</h4>';
+        	$html .= $this->subscriptionDetails();
+        }
+
         $html .= $this->customerDetails();
         $html .= $this->afterPaymentReceipt();
         $html .= $this->loadCss();
@@ -135,8 +161,9 @@ class PaymentReceipt
         }
 
         $orderItems = $this->getOrderItems();
+        $subscriptions = $this->getSubscriptions();
 
-        if (!$orderItems) {
+        if (!$orderItems && !$subscriptions) {
             return;
         }
 
@@ -152,7 +179,7 @@ class PaymentReceipt
             'submission' => $submission,
             'items' => $orderItems,
             'discount_items' => $discountItems,
-            'orderTotal' => OrderData::calculateOrderItemsTotal($orderItems, true, $this->entry->currency, $discountItems)
+	        'totalPaid' => OrderData::getTotalPaid($submission)
         ));
     }
 
@@ -229,13 +256,22 @@ class PaymentReceipt
 
     public function loadView($fileName, $data)
     {
-        // normalize the filename
-        $fileName = str_replace(array('../', './'), '', $fileName);
-        $basePath = apply_filters('fluentform_payment_receipt_template_base_path', FLUENTFORMPRO_DIR_PATH . 'src/views/receipt/', $fileName, $data);
-        $filePath = $basePath . $fileName . '.php';
-        extract($data);
-        ob_start();
-        include $filePath;
-        return ob_get_clean();
+        return PaymentHelper::loadView($fileName, $data);
+    }
+
+	private function subscriptionDetails()
+	{
+		$subscriptions = $this->getSubscriptions();
+		$preRender = apply_filters('fluentform_payment_receipt_pre_render_subscription_details', '', $this->entry, $subscriptions);
+
+		if ($preRender) {
+			return $preRender;
+		}
+
+		return $this->loadView('subscriptions_table', array(
+			'submission' => $this->entry,
+			'subscriptions' => $subscriptions,
+			'orderTotal' => $this->subscriptionTotal
+		));
     }
 }

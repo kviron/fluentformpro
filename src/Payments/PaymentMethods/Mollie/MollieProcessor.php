@@ -20,19 +20,24 @@ class MollieProcessor extends BaseProcessor
 
     public function init()
     {
-        add_action('fluentform_process_payment_' . $this->method, array($this, 'handlePaymentAction'), 10, 4);
+        add_action('fluentform_process_payment_' . $this->method, array($this, 'handlePaymentAction'), 10, 6);
         add_action('fluent_payment_frameless_' . $this->method, array($this, 'handleSessionRedirectBack'));
 
-        add_action('fluentform_ipn_endpint_' . $this->method, function () {
+        add_action('fluentform_ipn_endpoint_' . $this->method, function () {
             (new IPN())->verifyIPN();
             exit(200);
         });
 
         add_action('fluentform_ipn_mollie_action_paid', array($this, 'handlePaid'), 10, 2);
         add_action('fluentform_ipn_mollie_action_refunded', array($this, 'handleRefund'), 10, 3);
+
+	    add_filter(
+		    'fluentform_submitted_payment_items_' . $this->method,
+		    [$this, 'validateSubmittedItems'], 10, 4
+	    );
     }
 
-    public function handlePaymentAction($submissionId, $submissionData, $form, $methodSettings)
+    public function handlePaymentAction($submissionId, $submissionData, $form, $methodSettings, $hasSubscriptions, $totalPayable)
     {
         $this->setSubmissionId($submissionId);
         $this->form = $form;
@@ -63,12 +68,17 @@ class MollieProcessor extends BaseProcessor
             'type'               => 'success'
         ), site_url('/'));
 
+        $ipnDomain = site_url('index.php');
+        if(defined('FLUENTFORM_PAY_IPN_DOMAIN') && FLUENTFORM_PAY_IPN_DOMAIN) {
+            $ipnDomain = FLUENTFORM_PAY_IPN_DOMAIN;
+        }
+
         $listener_url = add_query_arg(array(
             'fluentform_payment_api_notify' => 1,
             'payment_method'                => $this->method,
             'submission_id'                 => $submission->id,
             'transaction_hash'              => $transaction->transaction_hash,
-        ), home_url('index.php'));
+        ), $ipnDomain);
 
         $paymentArgs = array(
             'amount' => [
@@ -98,7 +108,6 @@ class MollieProcessor extends BaseProcessor
                 'title'            => 'Mollie Payment Redirect Error',
                 'description'      => $paymentIntent->get_error_message()
             ]);
-
             wp_send_json_success([
                 'message'      => $paymentIntent->get_error_message()
             ], 423);
@@ -171,5 +180,14 @@ class MollieProcessor extends BaseProcessor
         $this->setSubmissionId($submission->id);
         $transaction = $this->getLastTransaction($submission->id);
         $this->updateRefund($refundAmount, $transaction, $submission, $this->method);
+    }
+
+	public function validateSubmittedItems($paymentItems, $form, $formData, $subscriptionItems)
+	{
+		if (count($subscriptionItems)) {
+			wp_send_json([
+				'errors' => __('Mollie Error: Mollie does not support subscriptions right now!', 'fluentformpro')
+			], 423);
+		}
     }
 }

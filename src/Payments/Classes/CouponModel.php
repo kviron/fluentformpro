@@ -18,7 +18,13 @@ class CouponModel
         if ($paginate) {
             $coupons = $query->paginate();
             foreach ($coupons['data'] as $coupon) {
-                $coupon->settings = maybe_unserialize($coupon->settings);
+                if(!empty($coupon->settings)) {
+                    $coupon->settings = maybe_unserialize($coupon->settings);
+                } else {
+                    $coupon->settings = [
+                        'allowed_form_ids' => []
+                    ];
+                }
                 if ($coupon->start_date == '0000-00-00') {
                     $coupon->start_date = '';
                 }
@@ -29,8 +35,16 @@ class CouponModel
             return $coupons;
         }
         $coupons = $query->get();
+
         foreach ($coupons as $coupon) {
-            $coupon->settings = maybe_unserialize($coupon->settings);
+            if(!empty($coupon->settings)) {
+                $coupon->settings = maybe_unserialize($coupon->settings);
+            } else {
+                $coupon->settings = [
+                  'allowed_form_ids' => []
+                ];
+            }
+
             if ($coupon->start_date == '0000-00-00') {
                 $coupon->start_date = '';
             }
@@ -70,6 +84,13 @@ class CouponModel
             ->get();
         foreach ($coupons as $coupon) {
             $coupon->settings = maybe_unserialize($coupon->settings);
+
+            if(!$coupon->settings) {
+                $coupon->settings = [
+                  'allowed_form_ids' => []
+                ];
+            }
+
             if ($coupon->start_date == '0000-00-00') {
                 $coupon->start_date = '';
             }
@@ -87,7 +108,9 @@ class CouponModel
         $data['updated_at'] = current_time('mysql');
         $data['created_by'] = get_current_user_id();
 
-        $data['settings'] = maybe_serialize($data['settings']);
+        if(isset($data['settings'])) {
+            $data['settings'] = maybe_serialize($data['settings']);
+        }
 
         return wpFluent()->table($this->table)
             ->insert($data);
@@ -97,7 +120,9 @@ class CouponModel
     {
         $data['updated_at'] = current_time('mysql');
 
-        $data['settings'] = maybe_serialize($data['settings']);
+        if(isset($data['settings'])) {
+            $data['settings'] = maybe_serialize($data['settings']);
+        }
 
         return wpFluent()->table($this->table)
             ->where('id', $id)

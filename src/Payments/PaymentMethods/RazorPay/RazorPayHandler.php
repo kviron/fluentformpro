@@ -18,7 +18,7 @@ class RazorPayHandler extends BasePaymentMethod
 
     public function init()
     {
-        add_filter('payment_method_settings_validation_'.$this->key, array($this, 'validateSettings'), 10, 2);
+        add_filter('fluentform_payment_method_settings_validation_'.$this->key, array($this, 'validateSettings'), 10, 2);
 
         if(!$this->isEnabled()) {
             return;
@@ -26,10 +26,7 @@ class RazorPayHandler extends BasePaymentMethod
 
         add_filter('fluentform_transaction_data_' . $this->key, array($this, 'modifyTransaction'), 10, 1);
 
-        add_filter(
-            'fluentformpro_available_payment_methods',
-            [$this, 'pushPaymentMethodToForm']
-        );
+        add_filter('fluentformpro_available_payment_methods', [$this, 'pushPaymentMethodToForm']);
 
         (new RazorPayProcessor())->init();
     }
@@ -95,7 +92,7 @@ class RazorPayHandler extends BasePaymentMethod
     public function getGlobalFields()
     {
         return [
-            'label' => 'RazorPay Settings',
+            'label' => 'RazorPay',
             'fields' => [
                 [
                     'settings_key' => 'is_active',
@@ -112,6 +109,17 @@ class RazorPayHandler extends BasePaymentMethod
                         'live' => 'Live Mode'
                     ],
                     'info_help' => 'Select the payment mode. for testing purposes you should select Test Mode otherwise select Live mode.',
+                    'check_status' => 'yes'
+                ],
+                [
+                    'settings_key' => 'checkout_type',
+                    'type' => 'input-radio',
+                    'label' => 'Checkout Style Type',
+                    'options' => [
+                        'modal' => 'Modal Checkout Style',
+                        'hosted' => 'Hosted to razorpay.com'
+                    ],
+                    'info_help' => 'Select which type of checkout style you want.',
                     'check_status' => 'yes'
                 ],
                 [
@@ -160,7 +168,7 @@ class RazorPayHandler extends BasePaymentMethod
                 ],
                 [
                     'type' => 'html',
-                    'html' => '<h2>RazorPay Notifications</h2><p>Select if you want to enable SMS and Email Notification from razorpay</p>'
+                    'html' => '<h2>RazorPay Notifications (For hosted Checkout)</h2><p>Select if you want to enable SMS and Email Notification from razorpay</p>'
                 ],
                 [
                     'settings_key' => 'notifications',
@@ -172,6 +180,10 @@ class RazorPayHandler extends BasePaymentMethod
                     ],
                     'info_help' => '',
                     'check_status' => 'yes'
+                ],
+                [
+                    'type' => 'html',
+                    'html' => '<p>  <a target="_blank" rel="noopener" href="https://wpmanageninja.com/docs/fluent-form/payment-settings/how-to-integrate-razorpay-with-wp-fluent-forms/">Please read the documentation</a> to learn how to setup <b>RazorPay Payment </b> Gateway. </p>'
                 ]
             ]
         ];

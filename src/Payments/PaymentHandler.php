@@ -6,6 +6,7 @@ if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly.
 }
 
+use FluentForm\App\Helpers\Helper;
 use FluentForm\App\Modules\Acl\Acl;
 use FluentForm\App\Modules\Form\FormFieldsParser;
 use FluentForm\App\Services\FormBuilder\ShortCodeParser;
@@ -19,11 +20,15 @@ use FluentFormPro\Payments\Components\ItemQuantity;
 use FluentFormPro\Payments\Components\MultiPaymentComponent;
 use FluentFormPro\Payments\Components\PaymentMethods;
 use FluentFormPro\Payments\Components\PaymentSummaryComponent;
+use FluentFormPro\Payments\Components\Subscription;
 use FluentFormPro\Payments\Orders\OrderData;
 use FluentFormPro\Payments\PaymentMethods\Mollie\MollieHandler;
-use FluentFormPro\Payments\PaymentMethods\PayPal\PayPalHandler;
 use FluentFormPro\Payments\PaymentMethods\Offline\OfflineHandler;
+use FluentFormPro\Payments\PaymentMethods\PayPal\PayPalHandler;
+use FluentFormPro\Payments\PaymentMethods\Paystack\PaystackHandler;
 use FluentFormPro\Payments\PaymentMethods\RazorPay\RazorPayHandler;
+use FluentFormPro\Payments\PaymentMethods\Stripe\Components\StripeInline;
+use FluentFormPro\Payments\PaymentMethods\Stripe\ConnectConfig;
 use FluentFormPro\Payments\PaymentMethods\Stripe\StripeHandler;
 use FluentFormPro\Payments\PaymentMethods\Stripe\StripeSettings;
 
@@ -50,14 +55,17 @@ class PaymentHandler
         (new OfflineHandler())->init();
         (new MollieHandler())->init();
         (new RazorPayHandler())->init();
+        (new PaystackHandler())->init();
 
         // Let's load the payment method component here
         new MultiPaymentComponent();
+        new Subscription();
         new CustomPaymentComponent();
         new ItemQuantity();
         new PaymentMethods();
         new PaymentSummaryComponent();
         new Coupon();
+        new StripeInline();
 
         add_action('fluentform_before_insert_payment_form', array($this, 'maybeHandlePayment'), 10, 3);
 
@@ -79,18 +87,20 @@ class PaymentHandler
 
         add_filter('fluentform_all_entry_labels_with_payment', array($this, 'modifySingleEntryLabels'), 10, 3);
 
-        add_action('fluentform_rending_payment_form', function ($form) {
+        add_action('fluentform_rendering_payment_form', function ($form) {
             wp_enqueue_script('fluentform-payment-handler', FLUENTFORMPRO_DIR_URL . 'public/js/payment_handler.js', array('jquery'), FLUENTFORM_VERSION, true);
 
             wp_localize_script('fluentform-payment-handler', 'fluentform_payment_config', [
                 'i18n' => [
-                    'item'       => __('Item', 'fluentformpro'),
-                    'price'      => __('Price', 'fluentformpro'),
-                    'qty'        => __('Qty', 'fluentformpro'),
-                    'line_total' => __('Line Total', 'fluentformpro'),
-                    'total'      => __('Total', 'fluentformpro'),
-                    'not_found'  => __('No payment item selected yet', 'fluentformpro'),
-                    'discount:'  => __('Discount:', 'fluentformpro')
+                    'item'            => __('Item', 'fluentformpro'),
+                    'price'           => __('Price', 'fluentformpro'),
+                    'qty'             => __('Qty', 'fluentformpro'),
+                    'line_total'      => __('Line Total', 'fluentformpro'),
+                    'total'           => __('Total', 'fluentformpro'),
+                    'not_found'       => __('No payment item selected yet', 'fluentformpro'),
+                    'discount:'       => __('Discount:', 'fluentformpro'),
+                    'processing_text' => __('Processing payment. Please wait...', 'fluentformpro'),
+                    'confirming_text' => __('Confirming payment. Please wait...', 'fluentformpro')
                 ]
             ]);
 
@@ -99,8 +109,15 @@ class PaymentHandler
             wp_localize_script('fluentform-payment-handler', 'fluentform_payment_config_' . $form->id, [
                 'currency_settings' => PaymentHelper::getCurrencyConfig($form->id),
                 'stripe'            => [
-                    'publishable_key' => $publishableKey
-                ]
+                    'publishable_key' => $publishableKey,
+                    'inlineConfig'    => PaymentHelper::getStripeInlineConfig($form->id)
+                ],
+                'stripe_app_info'   => array(
+                    'name'       => 'Fluent Forms',
+                    'version'    => FLUENTFORMPRO_VERSION,
+                    'url'        => site_url(),
+                    'partner_id' => 'pp_partner_FN62GfRLM2Kx5d'
+                )
             ]);
 
         });
@@ -108,6 +125,14 @@ class PaymentHandler
         if (isset($_GET['fluentform_payment']) && isset($_GET['payment_method'])) {
             add_action('wp', function () {
                 $data = $_GET;
+
+                $type = sanitize_text_field($_GET['fluentform_payment']);
+
+                if ($type == 'view' && $route = ArrayHelper::get($data, 'route')) {
+                    do_action('fluent_payment_view_' . $route, $data);
+                }
+
+                $this->validateFrameLessPage($data);
                 $paymentMethod = sanitize_text_field($_GET['payment_method']);
                 do_action('fluent_payment_frameless_' . $paymentMethod, $data);
             });
@@ -116,7 +141,7 @@ class PaymentHandler
         if (isset($_REQUEST['fluentform_payment_api_notify'])) {
             add_action('wp', function () {
                 $paymentMethod = sanitize_text_field($_REQUEST['payment_method']);
-                do_action('fluentform_ipn_endpint_' . $paymentMethod);
+                do_action('fluentform_ipn_endpoint_' . $paymentMethod);
             });
         }
 
@@ -129,7 +154,14 @@ class PaymentHandler
 
         add_filter('fluentform_payment_smartcode', array($this, 'paymentReceiptView'), 10, 3);
 
+        add_action('user_register', array($this, 'maybeAssignTransactions'), 99, 1);
+
         (new PaymentEntries())->init();
+
+        /*
+         * Transactions and subscriptions Shortcode
+         */
+        (new TransactionShortcodes())->init();
 
     }
 
@@ -147,6 +179,12 @@ class PaymentHandler
 
     public function renderPaymentSettings()
     {
+
+        if (isset($_GET['ff_stripe_connect'])) {
+            $data = ArrayHelper::only($_GET, ['ff_stripe_connect', 'mode', 'state', 'code']);
+            ConnectConfig::verifyAuthorizeSuccess($data);
+        }
+
         $paymentSettings = PaymentHelper::getPaymentSettings();
         $isSettingsAvailable = !!get_option('__fluentform_payment_module_settings');
 
@@ -157,25 +195,30 @@ class PaymentHandler
         }
 
         $data = [
-            'is_setup'           => $isSettingsAvailable,
-            'general'            => $paymentSettings,
-            'payment_methods'    => apply_filters('fluentformpro_available_payment_methods', []),
+            'is_setup'                  => $isSettingsAvailable,
+            'general'                   => $paymentSettings,
+            'payment_methods'           => apply_filters('fluentformpro_available_payment_methods', []),
             'available_payment_methods' => apply_filters('fluentformpro_payment_methods_global_settings', []),
-            'currencies'         => PaymentHelper::getCurrencies(),
-            'active_nav'         => $nav,
-            'stripe_webhook_url' => add_query_arg([
+            'currencies'                => PaymentHelper::getCurrencies(),
+            'active_nav'                => $nav,
+            'stripe_webhook_url'        => add_query_arg([
                 'fluentform_payment_api_notify' => '1',
                 'payment_method'                => 'stripe'
-            ], home_url('/'))
+            ], site_url('index.php')),
+            'paypal_webhook_url'        => add_query_arg([
+                'fluentform_payment_api_notify' => '1',
+                'payment_method'                => 'paypal'
+            ], site_url('index.php'))
         ];
 
         wp_enqueue_script('ff-payment-settings', FLUENTFORMPRO_DIR_URL . 'public/js/payment-settings.js', ['jquery'], FLUENTFORMPRO_VERSION, true);
+        wp_enqueue_style('ff-payment-settings', FLUENTFORMPRO_DIR_URL . 'public/css/payment_settings.css', [], FLUENTFORMPRO_VERSION);
 
         wp_enqueue_media();
 
         wp_localize_script('ff-payment-settings', 'ff_payment_settings', $data);
 
-        echo '<div id="ff-payment-settings"><ff-payment-settings :settings="settings"></ff-payment-settings></div>';
+        echo '<div id="ff-payment-settings"></div>';
     }
 
     public function handleAjaxEndpoints()
@@ -199,8 +242,7 @@ class PaymentHandler
 
         $paymentAction = new PaymentAction($form, $insertData, $data);
 
-
-        if (!$paymentAction->getCalculatedAmount() && !$paymentAction->getOrderItems()) {
+        if (!$paymentAction->getCalculatedAmount() && !$paymentAction->getOrderItems() && !$paymentAction->getSubscriptionItems()) {
             return;
         }
 
@@ -256,7 +298,7 @@ class PaymentHandler
 
 
     /**
-     * @param $html string
+     * @param $html     string
      * @param $property string
      * @param $instance ShortCodeParser
      * @return false|string
@@ -266,6 +308,88 @@ class PaymentHandler
         $entry = $instance::getEntry();
         $receiptClass = new PaymentReceipt($entry);
         return $receiptClass->getItem($property);
+    }
+
+    private function validateFrameLessPage($data)
+    {
+        // We should verify the transaction hash from the URL
+        $transactionHash = sanitize_text_field(ArrayHelper::get($data, 'transaction_hash'));
+        $submissionId = intval(ArrayHelper::get($data, 'fluentform_payment'));
+        if (!$submissionId) {
+            die('Validation Failed');
+        }
+
+        if ($transactionHash) {
+            $transaction = wpFluent()->table('fluentform_transactions')
+                ->where('submission_id', $submissionId)
+                ->where('transaction_hash', $transactionHash)
+                ->first();
+            if ($transaction) {
+                return true;
+            }
+
+            die('Transaction hash is invalid');
+        }
+
+        $uid = sanitize_text_field(ArrayHelper::get($data, 'entry_uid'));
+        if (!$uid) {
+            die('Validation Failed');
+        }
+
+        $originalUid = Helper::getSubmissionMeta($submissionId, '_entry_uid_hash');
+
+        if ($originalUid != $uid) {
+            die('Transaction UID is invalid');
+        }
+
+        return true;
+    }
+
+    private function maybeAssignTransactions($userId)
+    {
+        $user = get_user_by('ID', $userId);
+        if (!$user) {
+            return false;
+        }
+        $userEmail = $user->user_email;
+
+        $transactions = wpFluent()->table('fluentform_transactions')
+            ->where('payer_email', $userEmail)
+            ->where(function ($query) {
+                $query->whereNull('user_id')
+                    ->orWhere('user_id', '');
+            })
+            ->get();
+
+        if (!$transactions) {
+            return false;
+        }
+
+        $submissionIds = [];
+        $transactionIds = [];
+        foreach ($transactions as $transaction) {
+            $submissionIds[] = $transaction->submission_id;
+            $transactionIds[] = $transaction->id;
+        }
+
+        $submissionIds = array_unique($submissionIds);
+        $transactionIds = array_unique($transactionIds);
+
+        wpFluent()->table('fluentform_submissions')
+            ->whereIn('id', $submissionIds)
+            ->update([
+                'user_id'    => $userId,
+                'updated_at' => current_time('mysql')
+            ]);
+
+        wpFluent()->table('fluentform_transactions')
+            ->whereIn('id', $transactionIds)
+            ->update([
+                'user_id'    => $userId,
+                'updated_at' => current_time('mysql')
+            ]);
+
+        return true;
     }
 
 }

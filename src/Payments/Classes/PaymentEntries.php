@@ -8,6 +8,7 @@ if (!defined('ABSPATH')) {
 
 use FluentForm\App\Modules\Acl\Acl;
 use FluentFormPro\Payments\PaymentHelper;
+use FluentForm\Framework\Helpers\ArrayHelper;
 
 class PaymentEntries
 {
@@ -18,15 +19,17 @@ class PaymentEntries
         
         add_action('wp_ajax_fluentform_get_payments', array($this, 'getPayments'));
         add_action('wp_ajax_fluentform-do_entry_bulk_actions_payment', array($this, 'handleBulkAction'));
-        
+        add_action('wp_ajax_fluentform_get_all_payments_entries_filters', array($this, 'getFilters'));
+
     }
 
     public function loadApp()
     {
+        wp_enqueue_style('ff-payment-entries', FLUENTFORMPRO_DIR_URL.'public/css/payment_entries.css', [], FLUENTFORMPRO_VERSION);
         wp_enqueue_script('ff-payment-entries', FLUENTFORMPRO_DIR_URL . 'public/js/payment-entries.js', ['jquery'], FLUENTFORMPRO_VERSION, true);
-
+        $settingsUrl = admin_url('admin.php?page=fluent_forms_settings&component=payment_settings');
         do_action('fluentform_global_menu');
-        echo '<div id="ff_payment_entries"><ff-payment-entries></ff-payment-entries></div>';
+        echo '<div id="ff_payment_entries"><ff-payment-entries settings_url="'.$settingsUrl.'"></ff-payment-entries></div>';
     }
 
     public function getPayments()
@@ -64,6 +67,16 @@ class PaymentEntries
             ->offset($offset)
             ->orderBy('fluentform_transactions.id', 'DESC');
 
+        if ($selectedFormId = ArrayHelper::get($_REQUEST, 'form_id')) {
+            $paymentsQuery = $paymentsQuery->where('fluentform_transactions.form_id', intval($selectedFormId));
+        }
+        if ($paymentStatus = ArrayHelper::get($_REQUEST, 'payment_statuses')) {
+            $paymentsQuery = $paymentsQuery->where('fluentform_transactions.status', sanitize_text_field($paymentStatus));
+        }
+        if ($paymentMethods = ArrayHelper::get($_REQUEST, 'payment_methods')) {
+            $paymentsQuery = $paymentsQuery->where('fluentform_transactions.payment_method', sanitize_text_field($paymentMethods));
+        }
+
         $total = $paymentsQuery->count();
 
         $payments = $paymentsQuery->get();
@@ -73,6 +86,10 @@ class PaymentEntries
             $payment->entry_url = admin_url('admin.php?page=fluent_forms&route=entries&form_id='.$payment->form_id.'#/entries/'.$payment->submission_id);
             if($payment->payment_method == 'test') {
                 $payment->payment_method = 'offline';
+            }
+            if(apply_filters('ff_payment_entries_human_date', true)){
+                $payment->created_at = human_time_diff(strtotime($payment->created_at), strtotime(current_time('mysql')));
+
             }
         }
 
@@ -122,11 +139,15 @@ class PaymentEntries
     
                 //delete data from transaction table
                 wpFluent()->table('fluentform_transactions')
-                          ->whereIn('id', $entries)->delete ();
+                          ->whereIn('id', $entries)->delete();
                 
                 //delete data from order table
                 wpFluent()->table('fluentform_order_items')
                           ->whereIn('submission_id', $submission_ids)->delete();
+
+                // delete data from subscriptions table
+	            wpFluent()->table('fluentform_subscriptions')
+		            ->whereIn('submission_id', $submission_ids)->delete();
                 
                 //add log in each form that payment record has been deleted
                 foreach ($transactionData as $data){
@@ -153,5 +174,49 @@ class PaymentEntries
         wp_send_json_success([
             'message' => $message
         ], $statusCode);
+    }
+
+    public function getFilters()
+    {
+        $statuses = wpFluent()->table('fluentform_transactions')
+            ->select('status')
+            ->groupBy('status')
+            ->get();
+
+        $formattedStatuses = [];
+        foreach ($statuses as $status) {
+            $formattedStatuses[] = $status->status;
+        }
+        $forms = wpFluent()->table('fluentform_transactions')
+            ->select('fluentform_transactions.form_id', 'fluentform_forms.title')
+            ->groupBy('fluentform_transactions.form_id')
+            ->orderBy('fluentform_transactions.form_id', 'DESC')
+            ->join('fluentform_forms', 'fluentform_forms.id', '=', 'fluentform_transactions.form_id')
+            ->get();
+
+        $formattedForms = [];
+        foreach ($forms as $form) {
+            $formattedForms[] = [
+                'form_id' => $form->form_id,
+                'title'   => $form->title
+            ];
+        }
+
+        $paymentMethods = wpFluent()->table('fluentform_transactions')
+            ->select('payment_method')
+            ->groupBy('payment_method')
+            ->get();
+
+        $formattedMethods = [];
+        foreach ($paymentMethods as $method) {
+            $formattedMethods[] = $method->payment_method;
+        }
+
+        wp_send_json_success([
+            'available_statuses'   => $formattedStatuses,
+            'available_forms'      => $formattedForms,
+            'available_methods'    => $formattedMethods,
+        ]);
+
     }
 }

@@ -233,10 +233,24 @@ class PostFormHandler
             unset($postData['metabox_mappings']);
         }
 
+        $taxInput = null;
+        if (isset($postData['tax_input'])) {
+            $taxInput = $postData['tax_input'];
+            unset($postData['tax_input']);
+        }
+
         $postId = wp_insert_post($postData);
 
         if (is_wp_error($postId)) {
             return;
+        }
+
+        // Since WP doesn't allow setting terms for logged-out user,
+        // we'll handle it manually by saving the terms by looping.
+        if ($taxInput) {
+            foreach ($taxInput as $taxonomy => $tags) {
+                wp_set_post_terms($postId, $tags, $taxonomy);
+            }
         }
 
         if ($acfFields && function_exists('update_field')) {

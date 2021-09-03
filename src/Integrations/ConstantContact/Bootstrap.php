@@ -37,7 +37,7 @@ class Bootstrap extends IntegrationManager
         return [
             'logo'               => $this->logo,
             'menu_title'         => __('Constant Contact API Settings', 'fluentformpro'),
-            'menu_description'   => __('Constant Contact is an integrated email marketing, marketing automation, and small business CRM. Save time while growing your business with sales automation. Use Fluent Form to collect customer information and automatically add it to your Constant Contact list. If you don\'t have an Constant Contact account, you can <a href="https://www.trello.com/" target="_blank">sign up for one here.</a>', 'fluentformpro'),
+            'menu_description'   => __('Constant Contact is an integrated email marketing, marketing automation, and small business CRM. Save time while growing your business with sales automation. Use Fluent Form to collect customer information and automatically add it to your Constant Contact list. If you don\'t have an Constant Contact account, you can <a href="https://www.constantcontact.com/" rel="noopener" target="_blank">sign up for one here.</a>', 'fluentformpro'),
             'valid_message'      => __('Your Constant Contact configuration is valid', 'fluentformpro'),
             'invalid_message'    => __('Your Constant Contact configuration is invalid', 'fluentformpro'),
             'save_button_text'   => __('Verify Constant Contact ', 'fluentformpro'),

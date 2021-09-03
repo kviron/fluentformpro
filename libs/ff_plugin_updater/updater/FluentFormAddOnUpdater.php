@@ -70,11 +70,11 @@ class FluentFormAddOnUpdater
 
         add_filter('pre_set_site_transient_update_plugins', array($this, 'check_update'), 51);
         add_action( 'delete_site_transient_update_plugins', [ $this, 'delete_transients' ] );
-
+//
         add_filter('plugins_api', array($this, 'plugins_api_filter'), 10, 3);
         remove_action( 'after_plugin_row_' . $this->name, 'wp_plugin_update_row' );
-
-        add_action( 'after_plugin_row_' . $this->name, [ $this, 'show_update_notification' ], 10, 2 );
+//
+     //   add_action( 'after_plugin_row_' . $this->name, [ $this, 'show_update_notification' ], 10, 2 );
 
     }
 
@@ -160,9 +160,10 @@ class FluentFormAddOnUpdater
 
         $update_cache = get_site_transient( 'update_plugins' );
 
+
         $update_cache = $this->check_transient_data( $update_cache );
 
-        set_site_transient( 'update_plugins', $update_cache );
+      //  set_site_transient( 'update_plugins', $update_cache );
 
         // Restore our filter
         add_filter( 'pre_set_site_transient_update_plugins', [ $this, 'check_update' ] );

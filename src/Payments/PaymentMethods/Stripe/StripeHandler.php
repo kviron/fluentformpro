@@ -21,7 +21,9 @@ class StripeHandler
             return StripeSettings::getSettings();
         });
 
-        add_filter('payment_method_settings_validation_'.$this->key, array($this, 'validateSettings'), 10, 2);
+        add_filter('fluentform_payment_method_settings_validation_'.$this->key, array($this, 'validateSettings'), 10, 2);
+
+        add_filter('fluentform_payment_method_settings_save_'.$this->key, array($this, 'sanitizeGlobalSettings'), 10, 1);
 
         if (!$this->isEnabled()) {
             return;
@@ -29,15 +31,29 @@ class StripeHandler
 
         add_filter('fluentformpro_available_payment_methods', array($this, 'pushPaymentMethodToForm'), 10, 1);
 
-        add_action('fluentform_rending_payment_method_' . $this->key, array($this, 'enqueueAssets'));
+        add_action('fluentform_rendering_payment_method_' . $this->key, array($this, 'enqueueAssets'));
 
         add_filter('fluentform_transaction_data_' . $this->key, array($this, 'modifyTransaction'), 10, 1);
 
-        add_action('fluentform_ipn_endpint_'.$this->key, function () {
+        add_action('fluentform_ipn_endpoint_'.$this->key, function () {
             (new StripeListener())->verifyIPN();
         });
 
-        (new StripeProcessor())->init();
+	    add_action('fluentform_process_payment_stripe', [$this, 'routeStripeProcessor'], 10, 6);
+
+	    add_filter('fluentform_payment_manager_class_'.$this->key, function ($class) {
+	        return new PaymentManager();
+        });
+
+	    (new StripeProcessor())->init();
+	    (new StripeInlineProcessor())->init();
+    }
+
+	public function routeStripeProcessor($submissionId, $submissionData, $form, $methodSettings, $hasSubscriptions, $totalPayable = 0)
+	{
+		$processor = ArrayHelper::get($methodSettings, 'settings.embedded_checkout.value') === 'yes' ? 'inline' : 'hosted';
+
+		do_action('fluentform_process_payment_stripe_' . $processor, $submissionId, $submissionData, $form, $methodSettings, $hasSubscriptions, $totalPayable);
     }
 
     public function pushPaymentMethodToForm($methods)
@@ -57,18 +73,40 @@ class StripeHandler
                     'value' => 'Pay with Card (Stripe)',
                     'label' => 'Method Label'
                 ],
+	            'embedded_checkout' => [
+		            'type'     => 'checkbox',
+		            'template' => 'inputYesNoCheckbox',
+		            'value'    => 'yes',
+		            'label'    => 'Embedded Checkout'
+	            ],
                 'require_billing_info' => [
                     'type' => 'checkbox',
                     'template' => 'inputYesNoCheckbox',
                     'value' => 'no',
-                    'label' => 'Require Billing info'
+                    'label' => 'Require Billing info',
+                    'dependency' => array(
+                        'depends_on' => 'embedded_checkout/value',
+                        'value' => 'yes',
+                        'operator' => '!='
+                    )
                 ],
                 'require_shipping_info' => [
                     'type' => 'checkbox',
                     'template' => 'inputYesNoCheckbox',
                     'value' => 'no',
-                    'label' => 'Collect Shipping Info'
-                ]
+                    'label' => 'Collect Shipping Info',
+                    'dependency' => array(
+                        'depends_on' => 'embedded_checkout/value',
+                        'value' => 'yes',
+                        'operator' => '!='
+                    )
+                ],
+                'verify_zip_code' => [
+	                'type' => 'checkbox',
+	                'template' => 'inputYesNoCheckbox',
+	                'value' => 'no',
+	                'label' => 'Verify Zip/Postal Code'
+                ],
             ]
         ];
 
@@ -117,4 +155,21 @@ class StripeHandler
         $settings = StripeSettings::getSettings();
         return $settings['is_active'] == 'yes';
     }
+
+    public function sanitizeGlobalSettings($settings)
+    {
+        if($settings['is_active'] != 'yes') {
+            return [
+                'test_publishable_key' => '',
+                'test_secret_key'      => '',
+                'live_publishable_key' => '',
+                'live_secret_key'      => '',
+                'payment_mode'         => 'test',
+                'is_active'            => 'no',
+                'provider'             => 'connect' // api_keys
+            ];
+        }
+        return $settings;
+    }
+
 }

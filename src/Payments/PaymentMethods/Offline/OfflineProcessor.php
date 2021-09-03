@@ -16,20 +16,18 @@ class OfflineProcessor extends BaseProcessor
 
     protected $method = 'test';
 
-    public function handlePaymentAction($submissionId, $submissionData, $form, $methodSettings)
+    public function handlePaymentAction($submissionId, $submissionData, $form, $methodSettings, $hasSubscriptions, $totalPayable)
     {
         $this->form = $form;
         $this->setSubmissionId($submissionId);
-        
-        $this->insertTransaction([
-            'transaction_type' => 'onetime',
-            'payment_total' => $this->getAmountTotal(),
-            'status' => 'pending',
-            'currency' => PaymentHelper::getFormCurrency($form->id),
-            'payment_mode' => $this->getPaymentMode()
-        ]);
-    }
 
+        $amountTotal = $this->getAmountTotal();
+
+        if($amountTotal || $hasSubscriptions) {
+            $this->createInitialPendingTransaction($this->getSubmission(), $hasSubscriptions);
+        }
+    }
+    
     public function getPaymentMode()
     {
         return $this->method;

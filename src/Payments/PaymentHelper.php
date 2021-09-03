@@ -8,6 +8,8 @@ if (!defined('ABSPATH')) {
 
 use FluentForm\App\Helpers\Helper;
 use FluentForm\App\Modules\Form\FormFieldsParser;
+use FluentForm\App\Modules\Form\FormHandler;
+use FluentForm\App\Services\FormBuilder\ShortCodeParser;
 use FluentForm\Framework\Helpers\ArrayHelper;
 
 class PaymentHelper
@@ -52,31 +54,33 @@ class PaymentHelper
     {
         static $cachedSettings = [];
 
-        if(isset($cachedSettings[$scope.'_'.$formId])) {
-            return  $cachedSettings[$scope.'_'.$formId];
+        if (isset($cachedSettings[$scope . '_' . $formId])) {
+            return $cachedSettings[$scope . '_' . $formId];
         }
 
         $defaults = [
-            'currency' => '',
-            'push_meta_to_stripe' => 'no',
-            'receipt_email' => '',
-            'transaction_type' => 'product',
-            'stripe_checkout_methods' => ['card'],
-            'stripe_meta_data' => [
+            'currency'                       => '',
+            'push_meta_to_stripe'            => 'no',
+            'receipt_email'                  => '',
+            'customer_name'                  => '',
+            'transaction_type'               => 'product',
+            'stripe_checkout_methods'        => ['card'],
+            'stripe_meta_data'               => [
                 [
                     'item_value' => '',
-                    'label' => ''
+                    'label'      => ''
                 ]
             ],
-            'stripe_account_type' => 'global',
-            'stripe_custom_config' => [
-                'payment_mode' => 'live',
+            'stripe_account_type'            => 'global',
+            'disable_stripe_payment_receipt' => 'no',
+            'stripe_custom_config'           => [
+                'payment_mode'    => 'live',
                 'publishable_key' => '',
-                'secret_key' => ''
+                'secret_key'      => ''
             ],
-            'custom_paypal_id' => '',
-            'custom_paypal_mode' => 'live',
-            'paypal_account_type' => 'global'
+            'custom_paypal_id'               => '',
+            'custom_paypal_mode'             => 'live',
+            'paypal_account_type'            => 'global'
         ];
 
         $settings = Helper::getFormMeta($formId, '_payment_settings', []);
@@ -84,16 +88,16 @@ class PaymentHelper
 
         $globalSettings = self::getPaymentSettings();
 
-        if(!$settings['currency']) {
+        if (!$settings['currency']) {
             $settings['currency'] = $globalSettings['currency'];
         }
 
-        if($scope == 'public') {
+        if ($scope == 'public') {
             $settings = wp_parse_args($settings, $globalSettings);
         }
 
 
-        $cachedSettings[$scope.'_'.$formId] = $settings;
+        $cachedSettings[$scope . '_' . $formId] = $settings;
 
         return $settings;
 
@@ -101,13 +105,13 @@ class PaymentHelper
 
     public static function getCurrencyConfig($formId = false, $currency = false)
     {
-        if($formId) {
+        if ($formId) {
             $settings = self::getFormSettings($formId, 'public');
         } else {
             $settings = self::getPaymentSettings();
         }
 
-        if($currency) {
+        if ($currency) {
             $settings['currency'] = $currency;
         }
 
@@ -119,19 +123,30 @@ class PaymentHelper
 
     public static function getPaymentSettings()
     {
+        static $paymentSettings;
+        if ($paymentSettings) {
+            return $paymentSettings;
+        }
+
         $paymentSettings = get_option('__fluentform_payment_module_settings');
         $defaults = [
-            'status' => 'no',
-            'currency' => 'USD',
-            'currency_sign_position' => 'left',
-            'currency_separator' => 'dot_comma',
-            'decimal_points' => "2",
-            'business_name' => '',
-            'business_logo' => '',
-            'business_address' => ''
+            'status'                       => 'no',
+            'currency'                     => 'USD',
+            'currency_sign_position'       => 'left',
+            'currency_separator'           => 'dot_comma',
+            'decimal_points'               => "2",
+            'business_name'                => '',
+            'business_logo'                => '',
+            'business_address'             => '',
+            'debug_log'                    => 'no',
+            'all_payments_page_id'         => '',
+            'receipt_page_id'              => '',
+            'user_can_manage_subscription' => 'yes'
         ];
 
-        return wp_parse_args($paymentSettings, $defaults);
+        $paymentSettings = wp_parse_args($paymentSettings, $defaults);
+
+        return $paymentSettings;
     }
 
     public static function updatePaymentSettings($data)
@@ -503,13 +518,13 @@ class PaymentHelper
     public static function getPaymentStatuses()
     {
         return apply_filters('fluentform_available_payment_statuses', array(
-            'paid'       => __('Paid', 'fluentformpro'),
-            'processing' => __('Processing', 'fluentformpro'),
-            'pending'    => __('Pending', 'fluentformpro'),
-            'failed'     => __('Failed', 'fluentformpro'),
-            'refunded'   => __('Refunded', 'fluentformpro'),
+            'paid'               => __('Paid', 'fluentformpro'),
+            'processing'         => __('Processing', 'fluentformpro'),
+            'pending'            => __('Pending', 'fluentformpro'),
+            'failed'             => __('Failed', 'fluentformpro'),
+            'refunded'           => __('Refunded', 'fluentformpro'),
             'partially-refunded' => __('Partial Refunded', 'fluentformpro'),
-            'cancelled' => __('Cancelled', 'fluentformpro')
+            'cancelled'          => __('Cancelled', 'fluentformpro')
         ));
     }
 
@@ -517,9 +532,9 @@ class PaymentHelper
     {
         $inputs = FormFieldsParser::getInputs($formId, ['element', 'settings']);
         foreach ($inputs as $field) {
-            if($field['element'] == 'payment_method') {
+            if ($field['element'] == 'payment_method') {
                 $methods = ArrayHelper::get($field, 'settings.payment_methods');
-                if(is_array($methods)) {
+                if (is_array($methods)) {
                     return array_filter($methods, function ($method) {
                         return $method['enabled'] == 'yes';
                     });
@@ -529,44 +544,60 @@ class PaymentHelper
         return [];
     }
 
-    public static function getCustomerEmail($submission)
+    public static function getCustomerEmail($submission, $form = false)
     {
-        $paymentSettings = self::getFormSettings($submission->form_id, 'admin');
-        $targetInput = ArrayHelper::get($paymentSettings, 'receipt_email');
-        if ($targetInput) {
-            if (isset($submission->response[$targetInput])) {
-                $receiptEmail = $submission->response[$targetInput];
-                if (is_email($receiptEmail)) {
-                    return $receiptEmail;
-                }
+
+        $formSettings = PaymentHelper::getFormSettings($submission->form_id, 'admin');
+        $customerEmailField = ArrayHelper::get($formSettings, 'receipt_email');
+
+        if ($customerEmailField) {
+            $email = ArrayHelper::get($submission->response, $customerEmailField);
+            if ($email) {
+                return $email;
             }
         }
 
-        if ($userId = get_current_user_id()) {
-            $user = get_user_by('ID', $userId);
+        $user = get_user_by('ID', get_current_user_id());
+
+        if ($user) {
             return $user->user_email;
         }
 
-        return false;
+        if (!$form) {
+            return '';
+        }
+
+        $emailFields = FormFieldsParser::getInputsByElementTypes($form, ['input_email'], ['attributes']);
+
+        foreach ($emailFields as $field) {
+            $fieldName = $field['attributes']['name'];
+            if (!empty($submission->response[$fieldName])) {
+                return $submission->response[$fieldName];
+            }
+        }
+
+        return '';
+
     }
 
     /**
      * Trim a string and append a suffix.
      *
-     * @param  string  $string String to trim.
-     * @param  integer $chars  Amount of characters.
+     * @param string $string String to trim.
+     * @param integer $chars Amount of characters.
      *                         Defaults to 200.
-     * @param  string  $suffix Suffix.
+     * @param string $suffix Suffix.
      *                         Defaults to '...'.
      * @return string
      */
-    public static function formatPaymentItemString( $string, $chars = 200, $suffix = '...' ) {
+    public static function formatPaymentItemString($string, $chars = 200, $suffix = '...')
+    {
         $string = wp_strip_all_tags($string);
-        if ( strlen( $string ) > $chars ) {
-            if ( function_exists( 'mb_substr' ) ) {
-                $string = mb_substr( $string, 0, ( $chars - mb_strlen( $suffix ) ) ) . $suffix;
+        if (strlen($string) > $chars) {
+            if (function_exists('mb_substr')) {
+                $string = mb_substr($string, 0, ($chars - mb_strlen($suffix))) . $suffix;
             } else {
-                $string = substr( $string, 0, ( $chars - strlen( $suffix ) ) ) . $suffix;
+                $string = substr($string, 0, ($chars - strlen($suffix))) . $suffix;
             }
         }
 
@@ -576,34 +607,295 @@ class PaymentHelper
     /**
      * Limit length of an arg.
      *
-     * @param  string  $string Argument to limit.
-     * @param  integer $limit Limit size in characters.
+     * @param string $string Argument to limit.
+     * @param integer $limit Limit size in characters.
      * @return string
      */
-    public static function limitLength( $string, $limit = 127 ) {
+    public static function limitLength($string, $limit = 127)
+    {
         $str_limit = $limit - 3;
-        if ( function_exists( 'mb_strimwidth' ) ) {
-            if ( mb_strlen( $string ) > $limit ) {
-                $string = mb_strimwidth( $string, 0, $str_limit ) . '...';
+        if (function_exists('mb_strimwidth')) {
+            if (mb_strlen($string) > $limit) {
+                $string = mb_strimwidth($string, 0, $str_limit) . '...';
             }
         } else {
-            if ( strlen( $string ) > $limit ) {
-                $string = substr( $string, 0, $str_limit ) . '...';
+            if (strlen($string) > $limit) {
+                $string = substr($string, 0, $str_limit) . '...';
             }
         }
         return $string;
     }
 
-    public static function floatToString( $float ) {
-        if ( ! is_float( $float ) ) {
+    public static function floatToString($float)
+    {
+        if (!is_float($float)) {
             return $float;
         }
 
         $locale = localeconv();
-        $string = strval( $float );
-        $string = str_replace( $locale['decimal_point'], '.', $string );
+        $string = strval($float);
+        $string = str_replace($locale['decimal_point'], '.', $string);
 
         return $string;
     }
 
+    public static function convertToCents($amount)
+    {
+        if (!$amount) {
+            return 0;
+        }
+
+        $amount = floatval($amount);
+
+        return intval(round($amount * 100));
+    }
+
+    public static function getCustomerName($submission, $form = false)
+    {
+        $formSettings = PaymentHelper::getFormSettings($submission->form_id, 'admin');
+        $customerNameCode = ArrayHelper::get($formSettings, 'customer_name');
+        if ($customerNameCode) {
+            $customerName = ShortCodeParser::parse($customerNameCode, $submission->id, $submission->response);
+            if ($customerName) {
+                return $customerName;
+            }
+        }
+
+        $user = get_user_by('ID', get_current_user_id());
+
+        if ($user) {
+            $customerName = trim($user->first_name . ' ' . $user->last_name);
+            if (!$customerName) {
+                $customerName = $user->display_name;
+            }
+            if ($customerName) {
+                return $customerName;
+            }
+        }
+
+        if (!$form) {
+            return '';
+        }
+
+        $nameFields = FormFieldsParser::getInputsByElementTypes($form, ['input_name'], ['attributes']);
+
+        $fieldName = false;
+        foreach ($nameFields as $field) {
+            if ($field['element'] === 'input_name') {
+                $fieldName = $field['attributes']['name'];
+                break;
+            }
+        }
+
+        $name = '';
+        if ($fieldName) {
+            if (!empty($submission->response[$fieldName])) {
+                $names = array_filter($submission->response[$fieldName]);
+                return trim(implode(' ', $names));
+            }
+        }
+
+        return $name;
+    }
+
+    public static function getStripeInlineConfig($formId)
+    {
+        $methods = static::getFormPaymentMethods($formId);
+
+        $stripe = ArrayHelper::get($methods, 'stripe');
+
+        if ($stripe) {
+            return [
+                'is_inline' => ArrayHelper::get($stripe, 'settings.embedded_checkout.value') == 'yes',
+                'verifyZip' => ArrayHelper::get($methods['stripe'], 'settings.verify_zip_code.value') === 'yes',
+            ];
+        }
+
+        return [];
+    }
+
+    public static function log($data, $submission = false, $forceInsert = false)
+    {
+        if (!$forceInsert) {
+            static $paymentSettings;
+            if (!$paymentSettings) {
+                $paymentSettings = self::getPaymentSettings();
+            }
+
+            if (!isset($paymentSettings['debug_log']) && $paymentSettings['debug_log'] != 'yes') {
+                return false;
+            }
+        }
+
+        $defaults = [
+            'component'  => 'Payment',
+            'status'     => 'info',
+            'created_at' => current_time('mysql')
+        ];
+
+        if ($submission) {
+            $defaults['parent_source_id'] = $submission->form_id;
+            $defaults['source_type'] = 'submission_item';
+            $defaults['source_id'] = $submission->id;
+        } else {
+            $defaults['source_type'] = 'system_log';
+        }
+
+        $data = wp_parse_args($data, $defaults);
+
+        return wpFluent()->table('fluentform_logs')
+            ->insert($data);
+
+    }
+
+    public static function maybeFireSubmissionActionHok($submission)
+    {
+        if (Helper::getSubmissionMeta($submission->id, 'is_form_action_fired') == 'yes') {
+            return false;
+        }
+
+        $form = wpFluent()->table('fluentform_forms')->where('id', $submission->form_id)->first();
+
+        $formData = $submission->response;
+        if (!is_array($formData)) {
+            $formData = json_decode($formData, true);
+        }
+
+        (new FormHandler(wpFluentForm()))->processFormSubmissionData(
+            $submission->id, $formData, $form
+        );
+        Helper::setSubmissionMeta($submission->id, 'is_form_action_fired', 'yes');
+        return true;
+    }
+
+    public static function loadView($fileName, $data)
+    {
+        // normalize the filename
+        $fileName = str_replace(array('../', './'), '', $fileName);
+        $basePath = apply_filters('fluentform_payment_receipt_template_base_path', FLUENTFORMPRO_DIR_PATH . 'src/views/receipt/', $fileName, $data);
+        $filePath = $basePath . $fileName . '.php';
+        extract($data);
+        ob_start();
+        include $filePath;
+        return ob_get_clean();
+    }
+
+    public static function recordSubscriptionCancelled($subscription, $vendorData, $logData = [])
+    {
+        wpFluent()->table('fluentform_subscriptions')
+            ->where('id', $subscription->id)
+            ->update([
+                'status'     => 'cancelled',
+                'updated_at' => current_time('mysql')
+            ]);
+
+        $subscription = wpFluent()->table('fluentform_subscriptions')
+            ->where('id', $subscription->id)
+            ->first();
+
+        $submission = wpFluent()->table('fluentform_submissions')
+            ->where('id', $subscription->submission_id)
+            ->first();
+
+        $logDefaults = [
+            'parent_source_id' => $subscription->form_id,
+            'source_type'      => 'submission_item',
+            'source_id'        => $subscription->submission_id,
+            'component'        => 'Payment',
+            'status'           => 'info',
+            'title'            => 'Subscription has been cancelled',
+            'description'      => 'Subscription has been cancelled from ' . $submission->payment_method
+        ];
+
+        do_action('ff_log_data', wp_parse_args($logData, $logDefaults));
+
+        // New Payment Made so we have to fire some events here
+        do_action('fluentform_subscription_payment_canceled', $subscription, $submission, $vendorData);
+        do_action('fluentform_subscription_payment_canceled_'.$submission->payment_method, $subscription, $submission, $vendorData);
+    }
+
+    public static function getPaymentSummaryText($plan, $formId, $currency, $withMarkup = true)
+    {
+        $cases = apply_filters('fluentform_recurring_payment_summary_texts', [
+            'has_signup_fee' => __('{first_interval_total} for first {billing_interval} then {subscription_amount} for each {billing_interval}', 'fluentformpro'),
+            'has_trial'      => __('Free for {trial_days} days then {subscription_amount} for each {billing_interval}', 'fluentformpro'),
+            'onetime_only'   => __('One time payment of {first_interval_total}', 'fluentformpro'),
+            'normal'         => __('{subscription_amount} for each {billing_interval}', 'fluentformpro'),
+            'bill_times'     => __(', for {bill_times} installments', 'fluentformpro'),
+            'single_trial'   => __('Free for {trial_days} days then {subscription_amount} one time')
+        ], $plan, $formId);
+
+        // if is trial
+        $hasTrial = ArrayHelper::get($plan, 'has_trial_days') == 'yes' && ArrayHelper::get($plan, 'trial_days');
+        if ($hasTrial) {
+            $plan['signup_fee'] = 0;
+        }
+
+        $signupFee = 0;
+        $hasSignupFee = ArrayHelper::get($plan, 'has_signup_fee') == 'yes' && ArrayHelper::get($plan, 'signup_fee');
+        if ($hasSignupFee) {
+            $plan['trial_days'] = 0;
+            $signupFee = ArrayHelper::get($plan, 'signup_fee');
+        }
+
+        $firstIntervalTotal = PaymentHelper::formatMoney(
+            PaymentHelper::convertToCents($signupFee + ArrayHelper::get($plan, 'subscription_amount')),
+            $currency
+        );
+
+        if ($signupFee) {
+            $signupFee = PaymentHelper::formatMoney(
+                PaymentHelper::convertToCents($signupFee),
+                $currency
+            );
+        }
+
+        $subscriptionAmount = PaymentHelper::formatMoney(
+            PaymentHelper::convertToCents(ArrayHelper::get($plan, 'subscription_amount')),
+            $currency
+        );
+
+        $billingInterval = $plan['billing_interval'];
+
+        $replaces = array(
+            '{signup_fee}'           => '<span class="ff_bs ffbs_signup_fee">' . $signupFee . '</span>',
+            '{first_interval_total}' => '<span class="ff_bs ffbs_first_interval_total">' . $firstIntervalTotal . '</span>',
+            '{subscription_amount}'  => '<span class="ff_bs ffbs_subscription_amount">' . $subscriptionAmount . '</span>',
+            '{billing_interval}'     => '<span class="ff_bs ffbs_billing_interval">' . $billingInterval . '</span>',
+            '{trial_days}'           => '<span class="ff_bs ffbs_trial_days">' . $plan['trial_days'] . '</span>',
+            '{bill_times}'           => '<span class="ff_bs ffbs_bill_times">' . ArrayHelper::get($plan, 'bill_times') . '</span>'
+        );
+
+        if (ArrayHelper::get($plan, 'user_input') == 'yes') {
+            $cases['{subscription_amount}'] = '<span class="ff_dynamic_input_amount">' . $subscriptionAmount . '</span>';
+        }
+
+        foreach ($cases as $textKey => $text) {
+            $cases[$textKey] = str_replace(array_keys($replaces), array_values($replaces), $text);
+        }
+
+        $customText = '';
+        if ($hasSignupFee) {
+            $customText = $cases['has_signup_fee'];
+        } else if ($hasTrial) {
+            if (ArrayHelper::get($plan, 'bill_times') == 1) {
+                $customText = $cases['single_trial'];
+            } else {
+                $customText = $cases['has_trial'];
+            }
+        } else if (isset($plan['bill_times']) && $plan['bill_times'] == 1) {
+            $customText = $cases['onetime_only'];
+        } else {
+            $customText = $cases['normal'];
+        }
+
+        if (isset($plan['bill_times']) && $plan['bill_times'] > 1) {
+            $customText .= $cases['bill_times'];
+        }
+        if($withMarkup) {
+            $class = $plan['is_default'] === 'yes' ? '' : 'hidden_field';
+            return '<div class="ff_summary_container ff_summary_container_' . $plan['index'] . ' ' . $class . '">' . $customText . '</div>';
+        }
+        return $customText;
+    }
 }

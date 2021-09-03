@@ -7,7 +7,9 @@ if (!defined('ABSPATH')) {
 }
 
 use FluentForm\App\Modules\Form\FormHandler;
+use FluentForm\App\Services\FormBuilder\ShortCodeParser;
 use FluentForm\Framework\Helpers\ArrayHelper;
+use FluentFormPro\Payments\PaymentHelper;
 
 abstract class BaseProcessor
 {
@@ -21,10 +23,10 @@ abstract class BaseProcessor
 
     public function init()
     {
-        add_action('fluentform_process_payment_' . $this->method, array($this, 'handlePaymentAction'), 10, 4);
+        add_action('fluentform_process_payment_' . $this->method, array($this, 'handlePaymentAction'), 10, 6);
     }
 
-    public abstract function handlePaymentAction($submissionId, $submissionData, $form, $methodSettings);
+    public abstract function handlePaymentAction($submissionId, $submissionData, $form, $methodSettings, $hasSubscriptions, $totalPayable);
 
     public function setSubmissionId($submissionId)
     {
@@ -38,18 +40,14 @@ abstract class BaseProcessor
 
     public function insertTransaction($data)
     {
-        $submission = $this->getSubmission();
-        $data['created_at'] = current_time('mysql');
-        $data['updated_at'] = current_time('mysql');
-        $data['form_id'] = $submission->form_id;
-        $data['submission_id'] = $submission->id;
-        $data['payment_method'] = $this->method;
-        if(empty($data['transaction_type'])) {
+        if (empty($data['transaction_type'])) {
             $data['transaction_type'] = 'onetime';
         }
 
-        if ($userId = get_current_user_id()) {
-            $data['user_id'] = $userId;
+        $data = wp_parse_args($data, $this->getTransactionDefaults());
+
+        if (empty($data['transaction_hash'])) {
+            $data['transaction_hash'] = md5($data['transaction_type'] . '_payment_' . $data['submission_id'] . '-' . $data['form_id'] . '_' . $data['created_at'] . '-' . time() . '-' . mt_rand(100, 999));
         }
 
         return wpFluent()->table('fluentform_transactions')->insert($data);
@@ -63,12 +61,16 @@ abstract class BaseProcessor
         $data['form_id'] = $submission->form_id;
         $data['submission_id'] = $submission->id;
         $data['payment_method'] = $this->method;
-        if(empty($data['transaction_type'])) {
+        if (empty($data['transaction_type'])) {
             $data['transaction_type'] = 'refund';
         }
 
         if ($userId = get_current_user_id()) {
             $data['user_id'] = $userId;
+        }
+
+        if (empty($data['transaction_hash'])) {
+            $data['transaction_hash'] = md5($data['transaction_type'] . '_payment_' . $data['submission_id'] . '-' . $data['form_id'] . '_' . $data['created_at'] . '-' . time() . '-' . mt_rand(100, 999));
         }
 
         return wpFluent()->table('fluentform_transactions')->insert($data);
@@ -78,7 +80,6 @@ abstract class BaseProcessor
     {
         return wpFluent()->table('fluentform_transactions')
             ->where($column, $transactionId)
-            ->where('transaction_type', 'onetime')
             ->first();
     }
 
@@ -114,7 +115,7 @@ abstract class BaseProcessor
             ->where('id', $this->submissionId)
             ->update([
                 'payment_status' => $newStatus,
-                'updated_at' => current_time('mysql')
+                'updated_at'     => current_time('mysql')
             ]);
 
         $this->submission = null;
@@ -126,7 +127,7 @@ abstract class BaseProcessor
             'component'        => 'Payment',
             'status'           => 'info',
             'title'            => 'Payment Status changed',
-            'description'      => 'Payment status changed to '.$newStatus
+            'description'      => 'Payment status changed to ' . $newStatus
         ]);
 
         do_action('fluentform_after_payment_status_change', $newStatus, $this->getSubmission());
@@ -139,36 +140,48 @@ abstract class BaseProcessor
         $transactions = wpFluent()->table('fluentform_transactions')
             ->where('submission_id', $this->submissionId)
             ->whereIn('status', ['paid', 'requires_capture', 'processing', 'partially-refunded', 'refunded'])
-            ->where('transaction_type','onetime')
             ->get();
 
         $total = 0;
+        $subscriptionId = false;
+        $subBillCount = 0;
+
         foreach ($transactions as $transaction) {
             $total += $transaction->payment_total;
+            if($transaction->subscription_id) {
+                $subscriptionId = $transaction->subscription_id;
+                $subBillCount += 1;
+            }
         }
 
         $refunds = $this->getRefundTotal();
-        if($refunds) {
+        if ($refunds) {
             $total = $total - $refunds;
         }
 
-        return wpFluent()->table('fluentform_submissions')
+        wpFluent()->table('fluentform_submissions')
             ->where('id', $this->submissionId)
             ->update([
                 'total_paid' => $total,
                 'updated_at' => current_time('mysql')
             ]);
+
+        if($subscriptionId && $subBillCount) {
+            $this->updateSubscription($subscriptionId, [
+                'bill_count' => $subBillCount
+            ]);
+        }
     }
 
     public function getRefundTotal()
     {
         $refunds = wpFluent()->table('fluentform_transactions')
             ->where('submission_id', $this->submissionId)
-            ->where('transaction_type','refund')
+            ->where('transaction_type', 'refund')
             ->get();
 
         $total = 0;
-        if($refunds) {
+        if ($refunds) {
             foreach ($refunds as $refund) {
                 $total += $refund->payment_total;
             }
@@ -189,7 +202,7 @@ abstract class BaseProcessor
         wpFluent()->table('fluentform_transactions')
             ->where('id', $transactionId)
             ->update([
-                'status' => $newStatus,
+                'status'     => $newStatus,
                 'updated_at' => current_time('mysql')
             ]);
 
@@ -224,16 +237,16 @@ abstract class BaseProcessor
     public function getReturnData()
     {
         $submission = $this->getSubmission();
-        if($this->getMetaData('is_form_action_fired') == 'yes') {
+        if ($this->getMetaData('is_form_action_fired') == 'yes') {
             $data = (new FormHandler(wpFluentForm()))->getReturnData($submission->id, $this->getForm(), $submission->response);
             $returnData = [
                 'insert_id' => $submission->id,
-                'result' => $data,
-                'error' => ''
+                'result'    => $data,
+                'error'     => ''
             ];
-            if(!isset($_REQUEST['fluentform_payment_api_notify'])) {
+            if (!isset($_REQUEST['fluentform_payment_api_notify'])) {
                 // now we have to check if we need this user as auto login
-                if($loginId = $this->getMetaData('_make_auto_login')) {
+                if ($loginId = $this->getMetaData('_make_auto_login')) {
                     $this->maybeAutoLogin($loginId, $submission);
                 }
             }
@@ -255,6 +268,10 @@ abstract class BaseProcessor
         $submission = wpFluent()->table('fluentform_submissions')
             ->where('id', $this->submissionId)
             ->first();
+
+        if (!$submission) {
+            return false;
+        }
 
         $submission->response = json_decode($submission->response, true);
 
@@ -283,7 +300,7 @@ abstract class BaseProcessor
     {
         return wpFluent()->table('fluentform_order_items')
             ->where('submission_id', $this->submissionId)
-            ->where('type', 'single')
+            ->where('type', '!=', 'discount') // type = single, signup_fee
             ->get();
     }
 
@@ -302,11 +319,11 @@ abstract class BaseProcessor
         return wpFluent()->table('fluentform_submission_meta')
             ->insert([
                 'response_id' => $this->getSubmissionId(),
-                'form_id' => $this->getForm()->id,
-                'meta_key' => $name,
-                'value' => $value,
-                'created_at' => current_time('mysql'),
-                'updated_at' => current_time('mysql')
+                'form_id'     => $this->getForm()->id,
+                'meta_key'    => $name,
+                'value'       => $value,
+                'created_at'  => current_time('mysql'),
+                'updated_at'  => current_time('mysql')
             ]);
     }
 
@@ -335,44 +352,44 @@ abstract class BaseProcessor
     public function showPaymentView($returnData)
     {
         $redirectUrl = ArrayHelper::get($returnData, 'result.redirectUrl');
-        if($redirectUrl) {
+        if ($redirectUrl) {
             wp_redirect($redirectUrl);
             exit();
         }
 
         $form = $this->getForm();
 
-        if(!empty($returnData['title'])) {
+        if (!empty($returnData['title'])) {
             $title = $returnData['title'];
-        } else if($returnData['type'] == 'success') {
+        } else if ($returnData['type'] == 'success') {
             $title = __('Payment Success', 'fluentformpro');
         } else {
             $title = __('Payment Failed', 'fluentformpro');
         }
 
         $message = $returnData['error'];
-        if(!$message) {
+        if (!$message) {
             $message = $returnData['result']['message'];
         }
 
         $data = [
-            'status' => $returnData['type'],
-            'form' => $form,
-            'title' => $title,
+            'status'     => $returnData['type'],
+            'form'       => $form,
+            'title'      => $title,
             'submission' => $this->getSubmission(),
-            'message' => $message,
-            'is_new' => $returnData['is_new'],
-            'data' => $returnData
+            'message'    => $message,
+            'is_new'     => $returnData['is_new'],
+            'data'       => $returnData
         ];
 
         $data = apply_filters('fluentform_frameless_page_data', $data);
 
         add_filter('pre_get_document_title', function ($title) use ($data) {
-            return $data['title'].' '.apply_filters( 'document_title_separator', '-' ). ' ' . $data['form']->title;
+            return $data['title'] . ' ' . apply_filters('document_title_separator', '-') . ' ' . $data['form']->title;
         });
 
         add_action('wp_enqueue_scripts', function () {
-            wp_enqueue_style('fluent-form-landing', FLUENTFORMPRO_DIR_URL.'public/css/frameless.css', [], FLUENTFORMPRO_VERSION);
+            wp_enqueue_style('fluent-form-landing', FLUENTFORMPRO_DIR_URL . 'public/css/frameless.css', [], FLUENTFORMPRO_VERSION);
         });
 
         status_header(200);
@@ -397,24 +414,27 @@ abstract class BaseProcessor
         $alreadyRefunded = $this->getRefundTotal();
         $totalRefund = intval($refund_amount + $alreadyRefunded);
 
-        if($totalRefund < $transaction->payment_total) {
+        if ($totalRefund < $transaction->payment_total) {
             $status = 'partially-refunded';
         }
 
         $this->changeTransactionStatus($transaction->id, $status);
         $this->changeSubmissionPaymentStatus($status);
+        $uniqueHash = md5('refund_' . $submission->id . '-' . $submission->form_id . '-' . time() . '-' . mt_rand(100, 999));
 
         $refundData = [
-            'form_id'        => $submission->form_id,
-            'submission_id'  => $submission->id,
-            'payment_method' => $transaction->payment_method,
-            'charge_id'      =>  $refundId,
-            'payment_note'   => $refundNote,
-            'payment_total'  => $refund_amount,
-            'payment_mode'   => $transaction->payment_mode,
-            'created_at'     => current_time('mysql'),
-            'updated_at'     => current_time('mysql'),
-            'status'         => 'refunded',
+            'form_id'          => $submission->form_id,
+            'submission_id'    => $submission->id,
+            'transaction_hash' => $uniqueHash,
+            'payment_method'   => $transaction->payment_method,
+            'charge_id'        => $refundId,
+            'payment_note'     => $refundNote,
+            'payment_total'    => $refund_amount,
+            'currency'         => $transaction->currency,
+            'payment_mode'     => $transaction->payment_mode,
+            'created_at'       => current_time('mysql'),
+            'updated_at'       => current_time('mysql'),
+            'status'           => 'refunded',
             'transaction_type' => 'refund'
         ];
 
@@ -427,62 +447,65 @@ abstract class BaseProcessor
             'component'        => 'Payment',
             'status'           => 'info',
             'title'            => 'Refund issued',
-            'description'      => 'Refund issued and refund amount: '.number_format($refund_amount / 100, 2)
+            'description'      => 'Refund issued and refund amount: ' . number_format($refund_amount / 100, 2)
         ]);
 
         $this->recalculatePaidTotal();
-
         $refund = $this->getRefund($refundId);
 
-        do_action('fluentform_payment_refunded_'.$method, $refund, $refund->form_id);
-        do_action('fluentform_payment_refunded', $refund, $refund->form_id);
+        do_action('fluentform_payment_' . $status . '_' . $method, $refund, $transaction, $submission);
+        do_action('fluentform_payment_' . $status, $refund, $transaction, $submission);
     }
 
     public function updateRefund($totalRefund, $transaction, $submission, $method = '', $refundId = '', $refundNote = 'Refunded')
     {
+        if(!$totalRefund) {
+            return;
+        }
+
         $this->setSubmissionId($submission->id);
-        $existingRefund  = wpFluent()->table('fluentform_transactions')
+        $existingRefund = wpFluent()->table('fluentform_transactions')
             ->where('submission_id', $submission->id)
-            ->where('transaction_type','refund')
+            ->where('transaction_type', 'refund')
             ->first();
 
-        if($existingRefund) {
+        if ($existingRefund) {
 
-            if($existingRefund->payment_total == $totalRefund) {
+            if ($existingRefund->payment_total == $totalRefund) {
                 return;
             }
 
             $status = 'refunded';
-            if($totalRefund < $transaction->payment_total) {
+            if ($totalRefund < $transaction->payment_total) {
                 $status = 'partially-refunded';
             }
             $updateData = [
-                'form_id'        => $submission->form_id,
-                'submission_id'  => $submission->id,
-                'payment_method' => $transaction->payment_method,
-                'charge_id'      =>  $refundId,
-                'payment_note'   => $refundNote,
-                'payment_total'  => $totalRefund,
-                'payment_mode'   => $transaction->payment_mode,
-                'created_at'     => current_time('mysql'),
-                'updated_at'     => current_time('mysql'),
-                'status'         => 'refunded',
+                'form_id'          => $submission->form_id,
+                'submission_id'    => $submission->id,
+                'payment_method'   => $transaction->payment_method,
+                'charge_id'        => $refundId,
+                'payment_note'     => $refundNote,
+                'payment_total'    => $totalRefund,
+                'payment_mode'     => $transaction->payment_mode,
+                'created_at'       => current_time('mysql'),
+                'updated_at'       => current_time('mysql'),
+                'status'           => 'refunded',
                 'transaction_type' => 'refund'
             ];
 
             wpFluent()->table('fluentform_transactions')->where('id', $existingRefund->id)
                 ->update($updateData);
 
-            $existingRefund  = wpFluent()->table('fluentform_transactions')
+            $existingRefund = wpFluent()->table('fluentform_transactions')
                 ->where('submission_id', $submission->id)
-                ->where('transaction_type','refund')
+                ->where('transaction_type', 'refund')
                 ->first();
 
-            if($transaction->status != $status) {
+            if ($transaction->status != $status) {
                 $this->changeTransactionStatus($transaction->id, $status);
             }
 
-            do_action('fluentform_payment_refund_updated_'.$method, $existingRefund, $existingRefund->form_id);
+            do_action('fluentform_payment_refund_updated_' . $method, $existingRefund, $existingRefund->form_id);
             do_action('fluentform_payment_refund_updated', $existingRefund, $existingRefund->form_id);
 
         } else {
@@ -492,10 +515,10 @@ abstract class BaseProcessor
 
     private function maybeAutoLogin($loginId, $submission)
     {
-        if(is_user_logged_in() || !$loginId) {
+        if (is_user_logged_in() || !$loginId) {
             return;
         }
-        if($loginId != $submission->user_id) {
+        if ($loginId != $submission->user_id) {
             return;
         }
 
@@ -554,5 +577,342 @@ abstract class BaseProcessor
         $returnData['is_new'] = false;
 
         $this->showPaymentView($returnData);
+    }
+
+    public function getSubscriptions($status = false)
+    {
+        $subscriptions = wpFluent()->table('fluentform_subscriptions')
+            ->where('submission_id', $this->submissionId)
+            ->when($status, function ($q) use ($status) {
+                $q->where('status', $status);
+            })
+            ->get();
+
+        foreach ($subscriptions as $subscription) {
+            $subscription->original_plan = maybe_unserialize($subscription->original_plan);
+            $subscription->vendor_response = maybe_unserialize($subscription->vendor_response);
+        }
+
+        return $subscriptions;
+    }
+
+    public function updateSubscription($id, $data)
+    {
+        $data['updated_at'] = current_time('mysql');
+
+        return wpFluent()->table('fluentform_subscriptions')
+            ->where('id', $id)
+            ->update($data);
+    }
+
+    public function maybeInsertSubscriptionCharge($item)
+    {
+        $exists = wpFluent()->table('fluentform_transactions')
+            ->where('transaction_type', 'subscription')
+            ->where('submission_id', $item['submission_id'])
+            ->where('subscription_id', $item['subscription_id'])
+            ->where('charge_id', $item['charge_id'])
+            ->where('payment_method', $item['payment_method'])
+            ->first();
+
+        $isNew = false;
+
+        if ($exists) {
+            // We don't want to update the address and payer email that we already have here
+            if ($exists->billing_address) {
+                unset($item['billing_address']);
+            }
+            if ($exists->payer_email) {
+                unset($item['payer_email']);
+            }
+
+            unset($item['transaction_hash']);
+            unset($item['created_at']);
+
+            wpFluent()->table('fluentform_transactions')
+                ->where('id', $exists->id)
+                ->update($item);
+
+            $id = $exists->id;
+        } else {
+            if (empty($item['created_at'])) {
+                $item['created_at'] = current_time('mysql');
+                $item['updated_at'] = current_time('mysql');
+            }
+
+            if (empty($item['transaction_hash'])) {
+                $uniqueHash = md5('subscription_payment_' . $item['submission_id'] . '-' . $item['charge_id'] . '-' . time() . '-' . mt_rand(100, 999));
+                $item['transaction_hash'] = $uniqueHash;
+            }
+
+            $id = wpFluent()->table('fluentform_transactions')->insert($item);
+            $isNew = true;
+        }
+
+
+        $transaction = fluentFormApi('submissions')->transaction($id);
+
+        // We want to update the total amount here
+        $parentSubscription = wpFluent()->table('fluentform_subscriptions')
+            ->where('id', $transaction->subscription_id)
+            ->first();
+
+        // Let's count the total subscription payment
+        if ($parentSubscription) {
+            list($billCount, $paymentTotal) = $this->getPaymentCountsAndTotal($parentSubscription->id);
+
+            wpFluent()->table('fluentform_subscriptions')
+                ->where('id', $parentSubscription->id)
+                ->update([
+                    'bill_count'    => $billCount,
+                    'payment_total' => $paymentTotal,
+                    'updated_at'    => current_time('mysql')
+                ]);
+
+            wpFluent()->table('fluentform_submissions')->where('id', $parentSubscription->submission_id)
+                ->update([
+                    'payment_total' => $paymentTotal,
+                    'total_paid'    => $paymentTotal,
+                ]);
+
+            $subscription = wpFluent()->table('fluentform_subscriptions')
+                ->where('id', $parentSubscription->id)
+                ->first();
+
+            if($isNew) {
+                $submission = $this->getSubmission();
+                do_action('fluentform_subscription_received_payment', $subscription, $submission);
+                do_action('fluentform_subscription_received_payment_'.$submission->payment_method, $subscription, $submission);
+            }
+
+            if($subscription->bill_times >= $subscription->bill_count) {
+                // We have to mark the subscription as completed
+                $this->updateSubscriptionStatus($subscription, 'completed');
+            }
+        }
+
+        return $id;
+    }
+
+    public function getPaymentCountsAndTotal($subscriptionId, $paymentMethod = false)
+    {
+        $payments = wpFluent()
+            ->table('fluentform_transactions')
+            ->select(['id', 'payment_total'])
+            ->where('transaction_type', 'subscription')
+            ->where('subscription_id', $subscriptionId)
+            ->when($paymentMethod, function ($q) use ($paymentMethod) {
+                $q->where('payment_method', $paymentMethod);
+            })
+            ->get();
+
+        $paymentTotal = 0;
+
+        foreach ($payments as $payment) {
+            $paymentTotal += $payment->payment_total;
+        }
+
+        return [count($payments), $paymentTotal];
+    }
+
+    protected function getCancelAtTimeStamp($subscription)
+    {
+        if (!$subscription->bill_times) {
+            return false;
+        }
+
+        $dateTime = current_datetime();
+        $localtime = $dateTime->getTimestamp() + $dateTime->getOffset();
+
+        $billingStartDate = $localtime;
+
+        if ($subscription->expiration_at) {
+            $billingStartDate = strtotime($subscription->expiration_at);
+        }
+
+        $billTimes = $subscription->bill_times;
+
+        $interval = $subscription->billing_interval;
+
+        $interValMaps = [
+            'day'   => 'days',
+            'week'  => 'weeks',
+            'month' => 'months',
+            'year'  => 'years'
+        ];
+
+        if (isset($interValMaps[$interval]) && $billTimes > 1) {
+            $interval = $interValMaps[$interval];
+        }
+
+        return strtotime('+ ' . $billTimes . ' ' . $interval, $billingStartDate);
+    }
+
+    public function updateSubmission($id, $data)
+    {
+        $data['updated_at'] = current_time('mysql');
+
+        return wpFluent()->table('fluentform_submissions')
+            ->where('id', $id)
+            ->update($data);
+    }
+
+    public function limitLength($string, $limit = 127)
+    {
+        $str_limit = $limit - 3;
+        if (function_exists('mb_strimwidth')) {
+            if (mb_strlen($string) > $limit) {
+                $string = mb_strimwidth($string, 0, $str_limit) . '...';
+            }
+        } else {
+            if (strlen($string) > $limit) {
+                $string = substr($string, 0, $str_limit) . '...';
+            }
+        }
+        return $string;
+    }
+
+    public function getTransactionDefaults()
+    {
+        $submission = $this->getSubmission();
+        if (!$submission) {
+            return [];
+        }
+
+        $data = [];
+
+        if ($customerEmail = PaymentHelper::getCustomerEmail($submission, $this->getForm())) {
+            $data['payer_email'] = $customerEmail;
+        }
+
+        if ($customerName = PaymentHelper::getCustomerName($submission, $this->getForm())) {
+            $data['payer_name'] = $customerName;
+        }
+
+        if ($submission->user_id) {
+            $data['user_id'] = $submission->user_id;
+        } else if ($user = get_user_by('ID', get_current_user_id())) {
+            $data['user_id'] = $user->ID;
+        }
+
+        if (!$submission->user_id && !empty($data['payer_email'])) {
+            $email = $data['payer_email'];
+            $maybeUser = get_user_by('email', $email);
+            if ($maybeUser) {
+
+                $this->updateSubmission($submission->id, [
+                    'user_id' => $maybeUser->ID
+                ]);
+
+                if (empty($data['user_id'])) {
+                    $data['user_id'] = $maybeUser->ID;
+                }
+            }
+        }
+
+        if ($address = ArrayHelper::get($submission->response, 'address_1')) {
+            $address = array_filter($address);
+            if ($address) {
+                $data['billing_address'] = implode(', ', $address);
+            }
+        }
+
+        $data['created_at'] = current_time('mysql');
+        $data['updated_at'] = current_time('mysql');
+        $data['form_id'] = $submission->form_id;
+        $data['submission_id'] = $submission->id;
+        $data['payment_method'] = $this->method;
+
+        return $data;
+    }
+
+    public function createInitialPendingTransaction($submission = false, $hasSubscriptions = false)
+    {
+        if (!$submission) {
+            $submission = $this->getSubmission();
+        }
+
+        $form = $this->getForm();
+
+        $uniqueHash = md5($submission->id . '-' . $form->id . '-' . time() . '-' . mt_rand(100, 999));
+
+        $transactionData = [
+            'transaction_type' => 'onetime',
+            'transaction_hash' => $uniqueHash,
+            'payment_total'    => $this->getAmountTotal(),
+            'status'           => 'pending',
+            'currency'         => strtoupper($submission->currency),
+            'payment_mode'     => $this->getPaymentMode()
+        ];
+        if ($hasSubscriptions) {
+            $subscriptions = $this->getSubscriptions();
+            if ($subscriptions) {
+                $subscriptionInitialTotal = 0;
+                foreach ($subscriptions as $subscription) {
+                    if (!$subscription->trial_days) {
+                        $subscriptionInitialTotal += $subscription->recurring_amount;
+                    }
+                    if ($subscription->initial_amount) {
+                        $subscriptionInitialTotal += $subscription->initial_amount;
+                    }
+                    $transactionData['subscription_id'] = $subscription->id;
+                }
+                $transactionData['payment_total'] += $subscriptionInitialTotal;
+                $transactionData['transaction_type'] = 'subscription';
+            }
+        }
+
+        $transactionId = $this->insertTransaction($transactionData);
+
+        $this->updateSubmission($submission->id, [
+            'payment_total' => $transactionData['payment_total']
+        ]);
+
+        return $this->getTransaction($transactionId);
+
+    }
+
+    /**
+     * @param object $subscription
+     * @param string $newStatus
+     * @param string $note
+     * @return object
+     */
+    public function updateSubscriptionStatus($subscription, $newStatus, $note = '')
+    {
+        if(!$note) {
+            $note = 'Subscription status has been changed to '.$newStatus.' from '.$subscription->status;
+        }
+
+        $oldStatus = $subscription->status;
+
+        if($oldStatus == $newStatus) {
+            return $subscription;
+        }
+
+        wpFluent()->table('fluentform_subscriptions')
+            ->where('id', $subscription->id)
+            ->update([
+                'status' => $newStatus,
+                'updated_at' => current_time('mysql')
+            ]);
+
+        do_action('ff_log_data', [
+            'parent_source_id' => $this->getForm()->id,
+            'source_type'      => 'submission_item',
+            'source_id'        => $this->submissionId,
+            'component'        => 'Payment',
+            'status'           => 'info',
+            'title'            => 'Subscription Status changed to '.$newStatus,
+            'description'      => $note
+        ]);
+        $subscription->status = $newStatus;
+
+        $submission = $this->getSubmission();
+
+        do_action('fluentform_subscription_payment_'.$newStatus, $subscription, $submission, false);
+        do_action('fluentform_subscription_payment_'.$newStatus.'_'.$submission->payment_method, $subscription, $submission, false);
+
+        return $subscription;
     }
 }

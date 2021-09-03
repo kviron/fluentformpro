@@ -312,21 +312,21 @@ class Bootstrap extends IntegrationManager
             'first_name' => ArrayHelper::get($feedData, 'first_name')
         ];
 
-        $customFiels = [];
+        $customFields = [];
         foreach (ArrayHelper::get($feedData, 'fields', []) as $key => $value) {
             if (!$value) {
                 continue;
             }
-            $customFiels[$key] = $value;
+            $customFields[$key] = $value;
         }
 
         $tags = $this->getSelectedTagIds($feedData, $formData, 'tags');
         if ($tags) {
-            $contact['tags'] = $tags;
+            $subscriber['tags'] = $tags;
         }
 
-        if($customFiels) {
-            $subscriber['fields'] = $customFiels;
+        if($customFields) {
+            $subscriber['fields'] = $customFields;
         }
 
         $subscriber = array_filter($subscriber);

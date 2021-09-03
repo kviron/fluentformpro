@@ -16,6 +16,7 @@ class RazorPaySettings
         $defaults = [
             'is_active' => 'no',
             'payment_mode' => 'test',
+            'checkout_type' => 'modal',
             'test_api_key' => '',
             'test_api_secret' => '',
             'live_api_key' => '',

@@ -77,8 +77,11 @@
     .ffp_payment_info_item .ffp_item_value {
         font-size: 14px;
     }
+
     .ff_payment_receipt h4 {
         font-size: 18px;
-        padding-bottom: 10px;
+        margin: 0;
+        padding-top: 15px;
+        padding-bottom: 7px;
     }
 </style>

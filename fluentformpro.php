@@ -2,7 +2,7 @@
 /*
 Plugin Name: Fluent Forms Pro Add On Pack
 Description: The Pro version of FluentForm, the most advanced, drag and drop form builder plugin for WordPress.
-Version: 4.1.5
+Version: 4.2.0
 Author: WP Fluent Forms
 Author URI: https://wpfluentforms.com
 Plugin URI: https://wpfluentforms.com/
@@ -17,7 +17,7 @@ update_option('_ff_signature_license_status','valid');
 defined('ABSPATH') or die;
 
 define('FLUENTFORMPRO', true);
-define('FLUENTFORMPRO_VERSION', '4.1.5');
+define('FLUENTFORMPRO_VERSION', '4.2.0');
 define('FLUENTFORM_UPLOAD_DIR', '/fluentform');
 define('FLUENTFORMPRO_DIR_URL', plugin_dir_url(__FILE__));
 define('FLUENTFORMPRO_DIR_PATH', plugin_dir_path(__FILE__));
@@ -143,6 +143,11 @@ if (!class_exists('FluentFormPro')) {
              */
             (new \FluentFormPro\Payments\PaymentHandler)->init();
 
+            /*
+            * Address AutoComplete
+            */
+
+            (new \FluentFormPro\classes\AddressAutoComplete())->init();
 
             if (defined('BP_VERSION')) {
                 (new \FluentFormPro\Integrations\BuddyIntegration\FluentFormBuddyBoss())->init();
@@ -540,6 +545,10 @@ if (!class_exists('FluentFormPro')) {
                 true,
                 true
             );
+            //beaver builder editor page tiny mce editor conflict fix
+            if (class_exists('FLBuilderModel') && FLBuilderModel::is_builder_active()) {
+                wp_deregister_script('fluentform-uploader-jquery-ui-widget');
+            }
         }
     }
 

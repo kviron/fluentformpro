@@ -59,7 +59,7 @@ class SharePage
             $params = [
                 'ff_landing' => $formId
             ];
-            $shareUrl = add_query_arg($params, site_url());
+            $shareUrl = add_query_arg($params, site_url('/'));
         }
 
         wp_send_json_success([
@@ -79,7 +79,7 @@ class SharePage
 
         $shareUrl = '';
         if ($formattedSettings['status'] == 'yes') {
-            $shareUrl = add_query_arg(['ff_landing' => $formId], site_url());
+            $shareUrl = add_query_arg(['ff_landing' => $formId], site_url('/'));
         }
 
         wp_send_json_success([

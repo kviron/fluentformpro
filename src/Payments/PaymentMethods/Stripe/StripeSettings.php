@@ -19,12 +19,23 @@ class StripeSettings
             'live_publishable_key' => '',
             'live_secret_key'      => '',
             'payment_mode'         => 'test',
-            'is_active'            => 'no'
+            'is_active'            => 'no',
+            'provider'             => 'api_keys',
+            'test_account_id' => '',
+            'live_account_id' => '',
         ];
 
         $settings = get_option('fluentform_payment_settings_stripe', []);
 
+        if (!$settings) {
+            $defaults['provider'] = 'connect';
+        }
+
         $settings = wp_parse_args($settings, $defaults);
+
+        if($settings['provider'] == 'connect' && apply_filters('fluent_form_disable_stripe_connect', false)) {
+            $settings['provider'] = 'api_keys';
+        }
 
         return $settings;
     }
@@ -47,6 +58,7 @@ class StripeSettings
         }
 
         $settings = self::getSettings();
+
         if ($settings['payment_mode'] == 'live') {
             return $settings['live_secret_key'];
         }
@@ -82,6 +94,11 @@ class StripeSettings
         return $settings['payment_mode'] == 'live';
     }
 
+    public static function getMode($formId = false)
+    {
+        return static::isLive($formId) ? 'live' : 'test';
+    }
+
     public static function supportedShippingCountries()
     {
         $countries = [
@@ -114,22 +131,54 @@ class StripeSettings
         }
     }
 
-    public static function getAuthProviderBase()
-    {
-        return 'https://stripe.lab/?stripe_connect=1';
-    }
-
     public static function guessFormIdFromEvent($event)
     {
         $eventType = $event->type;
-        if ($eventType == 'checkout.session.completed' || $eventType == 'charge.refunded') {
+
+        $metaDataEvents = [
+            'checkout.session.completed',
+            'charge.refunded',
+            'charge.succeeded'
+        ];
+
+        if (in_array($eventType, $metaDataEvents)) {
             $data = $event->data->object;
-            $metaData = (array) $data->metadata;
+            $metaData = (array)$data->metadata;
             $formId = ArrayHelper::get($metaData, 'form_id');
             return $formId;
         }
 
         return false;
     }
+
+    public static function getPaymentDescriptor($form)
+    {
+        $title = $form->title;
+        $paymentSettings = PaymentHelper::getFormSettings($form->id, 'admin');
+        if ($providedDescriptor = ArrayHelper::get($paymentSettings, 'stripe_descriptor')) {
+            $title = $providedDescriptor;
+        } else {
+            $globalSettings = PaymentHelper::getPaymentSettings();
+            if (!empty($globalSettings['business_name'])) {
+                $title = $globalSettings['business_name'];
+            }
+        }
+
+        $illegal = array('<', '>', '"', "'");
+        // Remove slashes
+        $descriptor = stripslashes($title);
+        // Remove illegal characters
+        $descriptor = str_replace($illegal, '', $descriptor);
+        // Trim to 22 characters max
+        $descriptor = substr($descriptor, 0, 22);
+
+        if (!$descriptor || strlen($descriptor) < 5) {
+            $descriptor = 'FluentForm';
+        }
+
+        return $descriptor;
+
+    }
+
 
 }

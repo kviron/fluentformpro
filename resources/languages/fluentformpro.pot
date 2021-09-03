@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FluentForm Pro Add On Pack\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2021-07-13 16:55+0000\n"
+"POT-Creation-Date: 2021-09-01 13:46+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: \n"
@@ -33,6 +33,14 @@ msgstr ""
 
 #: src/Integrations/Telegram/Bootstrap.php:40
 msgid " Settings"
+msgstr ""
+
+#: src/Payments/PaymentHelper.php:824
+msgid ", for {bill_times} installments"
+msgstr ""
+
+#: src/Payments/Components/Subscription.php:224
+msgid "--Select Plan--"
 msgstr ""
 
 #: src/Components/RepeaterField.php:204
@@ -99,6 +107,14 @@ msgstr ""
 msgid "Account SID"
 msgstr ""
 
+#: src/views/receipt/transactions_table.php:11
+msgid "Action"
+msgstr ""
+
+#: src/views/receipt/user_subscription_payments.php:8
+msgid "Actions"
+msgstr ""
+
 #: src/Integrations/ActiveCampaign/Bootstrap.php:55
 msgid "ActiveCampaign API Key"
 msgstr ""
@@ -145,6 +161,11 @@ msgstr ""
 msgid "Allowed image types does not match"
 msgstr ""
 
+#: src/views/receipt/user_subscription_payments.php:5
+#: src/views/receipt/transactions_table.php:7
+msgid "Amount"
+msgstr ""
+
 #: src/views/receipt/payment_info_list.php:3
 msgid "Amount:"
 msgstr ""
@@ -159,6 +180,10 @@ msgstr ""
 
 #: src/Payments/Components/Coupon.php:65
 msgid "Apply Coupon"
+msgstr ""
+
+#: src/Payments/TransactionShortcodes.php:339
+msgid "Are you sure you want to cancel this subscription?"
 msgstr ""
 
 #: src/Integrations/SMSNotification/Bootstrap.php:61
@@ -202,11 +227,15 @@ msgid ""
 "href=\"https://www.aweber.com/\" target=\"_blank\">sign up for one here.</a>"
 msgstr ""
 
+#: src/Payments/PaymentMethods/Stripe/StripeProcessor.php:526
+msgid "Billing address from stripe has been logged in the submission data"
+msgstr ""
+
 #: src/views/receipt/customer_details.php:13
 msgid "Billing Address:"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:478
+#: src/Payments/PaymentHelper.php:493
 msgid "Burundian Franc"
 msgstr ""
 
@@ -237,18 +266,19 @@ msgid ""
 msgstr ""
 
 #: src/Components/ColorPicker.php:135
+#: src/views/receipt/user_subscriptions_table.php:34
 msgid "Cancel"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:512
+#: src/Payments/PaymentHelper.php:527
 msgid "Cancelled"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:490
+#: src/Payments/PaymentHelper.php:505
 msgid "Central African Cfa Franc"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:492
+#: src/Payments/PaymentHelper.php:507
 msgid "Cfp Franc"
 msgstr ""
 
@@ -256,7 +286,7 @@ msgstr ""
 msgid "Checkbox"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:479
+#: src/Payments/PaymentHelper.php:494
 msgid "Chilean Peso"
 msgstr ""
 
@@ -277,16 +307,33 @@ msgstr ""
 msgid "Client Folder ID"
 msgstr ""
 
+#: src/Payments/TransactionShortcodes.php:341
+msgid "Close"
+msgstr ""
+
 #: src/Components/RepeaterField.php:59
 msgid "Column 1"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:483
+#: src/Payments/PaymentHelper.php:498
 msgid "Comorian Franc"
 msgstr ""
 
 #: src/classes/DoubleOptin.php:27
 msgid "Confirmed"
+msgstr ""
+
+#: src/Payments/PaymentMethods/Paystack/PaystackProcessor.php:187
+#: src/Payments/PaymentMethods/RazorPay/RazorPayProcessor.php:323
+msgid "Confirming Payment, Please wait..."
+msgstr ""
+
+#: src/Payments/PaymentHandler.php:103
+msgid "Confirming payment. Please wait..."
+msgstr ""
+
+#: src/Payments/PaymentMethods/PayPal/API/IPN.php:354
+msgid "Congratulations! New Payment has been received from your subscription"
 msgstr ""
 
 #: src/Integrations/ConstantContact/Bootstrap.php:50
@@ -303,8 +350,8 @@ msgid ""
 "small business CRM. Save time while growing your business with sales "
 "automation. Use Fluent Form to collect customer information and "
 "automatically add it to your Constant Contact list. If you don't have an "
-"Constant Contact account, you can <a href=\"https://www.trello.com/\" "
-"target=\"_blank\">sign up for one here.</a>"
+"Constant Contact account, you can <a href=\"https://www.constantcontact."
+"com/\" rel=\"noopener\" target=\"_blank\">sign up for one here.</a>"
 msgstr ""
 
 #: src/Integrations/ConvertKit/Bootstrap.php:49
@@ -336,15 +383,15 @@ msgstr ""
 msgid "Coupon"
 msgstr ""
 
-#: src/Payments/AjaxEndpoints.php:307
+#: src/Payments/AjaxEndpoints.php:316
 msgid "Coupon has been created successfully"
 msgstr ""
 
-#: src/Payments/AjaxEndpoints.php:318
+#: src/Payments/AjaxEndpoints.php:327
 msgid "Coupon has been successfully deleted"
 msgstr ""
 
-#: src/Payments/PaymentMethods/Stripe/StripeHandler.php:50
+#: src/Payments/PaymentMethods/Stripe/StripeHandler.php:66
 msgid "Credit/Debit Card (Stripe)"
 msgstr ""
 
@@ -365,7 +412,13 @@ msgstr ""
 msgid "Customer Name:"
 msgstr ""
 
+#: src/views/receipt/user_subscription_payments.php:6
+#: src/views/receipt/transactions_table.php:10
+msgid "Date"
+msgstr ""
+
 #: src/views/receipt/payment_info.php:7
+#: src/views/receipt/transaction_info.php:7
 msgid "Date:"
 msgstr ""
 
@@ -373,12 +426,12 @@ msgstr ""
 msgid "Default Channel/Group Chat ID"
 msgstr ""
 
-#: src/Payments/PaymentHandler.php:93
-#: src/views/receipt/order_items_table.php:30
+#: src/Payments/PaymentHandler.php:101
+#: src/views/receipt/order_items_table.php:28
 msgid "Discount:"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:480
+#: src/Payments/PaymentHelper.php:495
 msgid "Djiboutian Franc"
 msgstr ""
 
@@ -485,6 +538,10 @@ msgid ""
 "GetResponse account and go to<br />Integrations & API from main menu."
 msgstr ""
 
+#: src/classes/AddressAutoComplete.php:71
+msgid "Enter your Google Map API Key"
+msgstr ""
+
 #: src/Integrations/Hubspot/Bootstrap.php:48
 msgid ""
 "Enter your Hubspot API Key, if you do not have <br>Please login to your "
@@ -565,11 +622,11 @@ msgstr ""
 msgid "Extremely Likely"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:509
+#: src/Payments/PaymentHelper.php:524
 msgid "Failed"
 msgstr ""
 
-#: src/Payments/AjaxEndpoints.php:108
+#: src/Payments/AjaxEndpoints.php:114
 msgid "Failed to save settings"
 msgstr ""
 
@@ -610,12 +667,27 @@ msgstr ""
 msgid "Fluent Forms Pro Add On Pack"
 msgstr ""
 
-#: libs/ff_plugin_updater/ff-fluentform-pro-update.php:43
+#: libs/ff_plugin_updater/ff-fluentform-pro-update.php:44
 msgid "Fluent Forms Pro License"
+msgstr ""
+
+#: src/classes/AddressAutoComplete.php:63
+msgid "For address autocomplete feature you may setup google map API details"
 msgstr ""
 
 #: src/classes/AdvancedFormValidation.php:31
 msgid "Form validation has been failed"
+msgstr ""
+
+#: src/Payments/PaymentHelper.php:821
+msgid ""
+"Free for {trial_days} days then {subscription_amount} for each "
+"{billing_interval}"
+msgstr ""
+
+#: src/Payments/PaymentMethods/Stripe/API/Customer.php:37
+#: src/Payments/PaymentMethods/Stripe/API/Plan.php:32
+msgid "General Error"
 msgstr ""
 
 #: src/Integrations/GetGist/Bootstrap.php:49
@@ -644,11 +716,31 @@ msgid ""
 "target=\"_blank\">sign up for one here.</a>"
 msgstr ""
 
+#: src/classes/AddressAutoComplete.php:64
+msgid "Google Map API is set."
+msgstr ""
+
+#: src/classes/AddressAutoComplete.php:72
+msgid "Google Map API Key"
+msgstr ""
+
+#: src/classes/AddressAutoComplete.php:108
+msgid "Google Map Api key has been saved"
+msgstr ""
+
+#: src/classes/AddressAutoComplete.php:65
+msgid "Google Map API key is not valid"
+msgstr ""
+
+#: src/classes/AddressAutoComplete.php:62
+msgid "Google Map Integration Settings"
+msgstr ""
+
 #: src/Integrations/GoogleSheet/Bootstrap.php:41
 msgid "Google Sheets"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:481
+#: src/Payments/PaymentHelper.php:496
 msgid "Guinean Franc"
 msgstr ""
 
@@ -692,11 +784,16 @@ msgid ""
 "here.</a>"
 msgstr ""
 
-#: src/Payments/Classes/PaymentReceipt.php:97
+#: src/views/receipt/transactions_table.php:6
+msgid "ID"
+msgstr ""
+
+#: src/Payments/Classes/PaymentReceipt.php:116
 msgid "Invalid submission. No receipt found"
 msgstr ""
 
-#: src/Payments/PaymentHandler.php:87 src/views/receipt/order_items_table.php:4
+#: src/Payments/PaymentHandler.php:95 src/views/receipt/order_items_table.php:4
+#: src/views/receipt/subscriptions_table.php:4
 msgid "Item"
 msgstr ""
 
@@ -708,7 +805,7 @@ msgstr ""
 msgid "Item Successfully deleted"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:482
+#: src/Payments/PaymentHelper.php:497
 msgid "Japanese Yen"
 msgstr ""
 
@@ -725,31 +822,31 @@ msgstr ""
 msgid "Last Name"
 msgstr ""
 
-#: libs/ff_plugin_updater/updater/FluentFormAddOnChecker.php:404
+#: libs/ff_plugin_updater/updater/FluentFormAddOnChecker.php:406
 msgid "License deactivated"
 msgstr ""
 
-#: src/Payments/PaymentHandler.php:90 src/views/receipt/order_items_table.php:7
+#: src/Payments/PaymentHandler.php:98 src/views/receipt/order_items_table.php:7
 msgid "Line Total"
 msgstr ""
 
-#: src/Payments/PaymentMethods/PayPal/PayPalProcessor.php:204
+#: src/Payments/PaymentMethods/PayPal/PayPalProcessor.php:221
 msgid ""
 "Looks like the payment is not marked as paid yet. Please reload this page "
 "after 1-2 minutes. Sometimes, PayPal payments take few minutes to marked as "
 "paid.  Please contact if needed!"
 msgstr ""
 
-#: src/Payments/PaymentMethods/PayPal/PayPalProcessor.php:211
+#: src/Payments/PaymentMethods/PayPal/PayPalProcessor.php:240
 msgid "Looks like you have cancelled the payment"
 msgstr ""
 
-#: src/Payments/PaymentMethods/RazorPay/RazorPayProcessor.php:167
-#: src/Payments/PaymentMethods/Stripe/StripeProcessor.php:296
+#: src/Payments/PaymentMethods/RazorPay/RazorPayProcessor.php:173
+#: src/Payments/PaymentMethods/Stripe/StripeProcessor.php:308
 msgid "Looks like you have cancelled the payment. Please try again!"
 msgstr ""
 
-#: src/Payments/PaymentMethods/BaseProcessor.php:549
+#: src/Payments/PaymentMethods/BaseProcessor.php:572
 msgid "Looks like you have is still on pending status"
 msgstr ""
 
@@ -761,7 +858,7 @@ msgstr ""
 msgid "MailerLite Settings"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:485
+#: src/Payments/PaymentHelper.php:500
 msgid "Malagasy Ariary"
 msgstr ""
 
@@ -789,6 +886,14 @@ msgstr ""
 
 #: src/Payments/PaymentMethods/Mollie/MollieHandler.php:63
 msgid "Mollie API Key is required"
+msgstr ""
+
+#: src/Payments/PaymentMethods/Mollie/MollieProcessor.php:189
+msgid "Mollie Error: Mollie does not support subscriptions right now!"
+msgstr ""
+
+#: src/Payments/Components/Subscription.php:63
+msgid "Monthly Plan"
 msgstr ""
 
 #: src/Integrations/MooSend/Bootstrap.php:48
@@ -825,8 +930,12 @@ msgid ""
 "payment settings"
 msgstr ""
 
-#: src/Payments/PaymentHandler.php:92
+#: src/Payments/PaymentHandler.php:100
 msgid "No payment item selected yet"
+msgstr ""
+
+#: src/Payments/TransactionShortcodes.php:72
+msgid "No subscription payments found"
 msgstr ""
 
 #: src/Components/NetPromoterScore.php:39
@@ -837,8 +946,8 @@ msgstr ""
 msgid "Number From"
 msgstr ""
 
-#: src/Payments/Classes/PaymentReceipt.php:66
-#: src/Payments/Classes/PaymentReceipt.php:146
+#: src/Payments/Classes/PaymentReceipt.php:71
+#: src/Payments/Classes/PaymentReceipt.php:173
 #: src/Payments/PaymentMethods/Offline/OfflineHandler.php:30
 #: src/Payments/PaymentMethods/Offline/OfflineHandler.php:78
 msgid "Offline"
@@ -848,7 +957,15 @@ msgstr ""
 msgid "Offline Payment"
 msgstr ""
 
-#: src/Payments/Classes/PaymentReceipt.php:105
+#: src/Payments/PaymentHelper.php:822
+msgid "One time payment of {first_interval_total}"
+msgstr ""
+
+#: src/Payments/PaymentMethods/Stripe/StripeInlineProcessor.php:334
+msgid "One time Payment Successfully made via Stripe. Charge ID: "
+msgstr ""
+
+#: src/Payments/Classes/PaymentReceipt.php:124
 msgid "Order Details"
 msgstr ""
 
@@ -860,11 +977,11 @@ msgstr ""
 msgid "Organization Name"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:506
+#: src/Payments/PaymentHelper.php:521
 msgid "Paid"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:486
+#: src/Payments/PaymentHelper.php:501
 msgid "Paraguayan Guaraní"
 msgstr ""
 
@@ -872,16 +989,28 @@ msgstr ""
 msgid "Partial Entries"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:511
+#: src/Payments/PaymentHelper.php:526
 msgid "Partial Refunded"
 msgstr ""
 
-#: src/Payments/PaymentMethods/PayPal/PayPalProcessor.php:209
+#: src/Payments/PaymentMethods/Stripe/Components/StripeInline.php:46
+msgid "Pay with Stripe"
+msgstr ""
+
+#: src/Payments/PaymentMethods/PayPal/PayPalProcessor.php:238
 msgid "Payment Cancelled"
 msgstr ""
 
-#: src/Payments/PaymentMethods/BaseProcessor.php:350
+#: src/Payments/PaymentMethods/Stripe/API/Customer.php:20
+msgid "Payment data validation failed"
+msgstr ""
+
+#: src/Payments/PaymentMethods/BaseProcessor.php:367
 msgid "Payment Failed"
+msgstr ""
+
+#: src/Payments/PaymentMethods/Stripe/StripeInlineProcessor.php:283
+msgid "Payment Failed! Your card may have been declined."
 msgstr ""
 
 #: src/Payments/Components/MultiPaymentComponent.php:78
@@ -892,7 +1021,12 @@ msgstr ""
 msgid "Payment Item"
 msgstr ""
 
+#: src/views/receipt/transactions_table.php:9
+msgid "Payment Method"
+msgstr ""
+
 #: src/views/receipt/payment_info.php:16
+#: src/views/receipt/transaction_info.php:12
 #: src/views/receipt/payment_info_list.php:7
 msgid "Payment Method:"
 msgstr ""
@@ -901,20 +1035,30 @@ msgstr ""
 msgid "Payment Methods"
 msgstr ""
 
-#: src/Payments/AjaxEndpoints.php:51
+#: src/Payments/PaymentMethods/Paystack/PaystackProcessor.php:186
+#: src/Payments/PaymentMethods/RazorPay/RazorPayProcessor.php:322
+msgid "Payment Modal is opening, Please complete the payment"
+msgstr ""
+
+#: src/Payments/AjaxEndpoints.php:57
 msgid "Payment Module successfully enabled!"
 msgstr ""
 
-#: src/Payments/PaymentHandler.php:247
+#: src/Payments/PaymentHandler.php:289
 msgid "Payment Settings"
 msgstr ""
 
+#: src/Payments/PaymentMethods/Stripe/StripeInlineProcessor.php:319
+msgid "Payment status changed to paid"
+msgstr ""
+
 #: src/views/receipt/payment_info.php:28
+#: src/views/receipt/transaction_info.php:24
 #: src/views/receipt/payment_info_list.php:17
 msgid "Payment Status:"
 msgstr ""
 
-#: src/Payments/PaymentMethods/BaseProcessor.php:348
+#: src/Payments/PaymentMethods/BaseProcessor.php:365
 msgid "Payment Success"
 msgstr ""
 
@@ -922,23 +1066,46 @@ msgstr ""
 msgid "Payment Summary"
 msgstr ""
 
-#: src/Payments/PaymentMethods/PayPal/PayPalProcessor.php:202
+#: src/Payments/PaymentMethods/PayPal/PayPalProcessor.php:231
 msgid "Payment was not marked as Paid"
 msgstr ""
 
-#: src/Payments/PaymentMethods/BaseProcessor.php:547
+#: src/Payments/PaymentMethods/BaseProcessor.php:570
 msgid "Payment was not marked as paid"
 msgstr ""
 
-#: src/Payments/PaymentMethods/PayPal/PayPalHandler.php:42
+#: src/Payments/TransactionShortcodes.php:337
+msgid "Payments"
+msgstr ""
+
+#: src/Payments/PaymentMethods/PayPal/PayPalHandler.php:43
 msgid "PayPal"
 msgstr ""
 
-#: src/Payments/PaymentMethods/PayPal/PayPalHandler.php:71
+#: src/Payments/PaymentMethods/PayPal/PayPalHandler.php:72
 msgid "PayPal Email address is required"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:508
+#: src/Payments/PaymentMethods/PayPal/PayPalProcessor.php:447
+msgid ""
+"PayPal Error: PayPal does not support multiple subscriptions at one request"
+msgstr ""
+
+#: src/Payments/PaymentMethods/PayPal/PayPalProcessor.php:441
+msgid ""
+"PayPal Error: PayPal does not support subscriptions payment and single "
+"amount payment at one request"
+msgstr ""
+
+#: src/Payments/PaymentMethods/PayPal/API/IPN.php:229
+msgid "PayPal recurring payment subscription successfully initiated"
+msgstr ""
+
+#: src/Payments/PaymentMethods/Paystack/PaystackHandler.php:37
+msgid "Paystack"
+msgstr ""
+
+#: src/Payments/PaymentHelper.php:523
 msgid "Pending"
 msgstr ""
 
@@ -986,11 +1153,13 @@ msgstr ""
 msgid "Please fix the errors"
 msgstr ""
 
-#: src/Payments/PaymentMethods/RazorPay/RazorPayHandler.php:73
+#: src/Payments/PaymentMethods/Paystack/PaystackHandler.php:70
+#: src/Payments/PaymentMethods/RazorPay/RazorPayHandler.php:70
 msgid "Please provide live API key and secret"
 msgstr ""
 
-#: src/Payments/PaymentMethods/RazorPay/RazorPayHandler.php:69
+#: src/Payments/PaymentMethods/Paystack/PaystackHandler.php:66
+#: src/Payments/PaymentMethods/RazorPay/RazorPayHandler.php:66
 msgid "Please provide test API key and secret"
 msgstr ""
 
@@ -1021,13 +1190,14 @@ msgstr ""
 msgid "Please Select Client Now"
 msgstr ""
 
-#: src/Payments/Classes/PaymentEntries.php:95
+#: src/Payments/Classes/PaymentEntries.php:112
 msgid "Please select entries & action first"
 msgstr ""
 
-#: src/Payments/PaymentMethods/PayPal/PayPalHandler.php:75
+#: src/Payments/PaymentMethods/Paystack/PaystackHandler.php:61
+#: src/Payments/PaymentMethods/PayPal/PayPalHandler.php:76
 #: src/Payments/PaymentMethods/Mollie/MollieHandler.php:67
-#: src/Payments/PaymentMethods/RazorPay/RazorPayHandler.php:64
+#: src/Payments/PaymentMethods/RazorPay/RazorPayHandler.php:61
 msgid "Please select Payment Mode"
 msgstr ""
 
@@ -1053,23 +1223,28 @@ msgstr ""
 msgid "Prefix"
 msgstr ""
 
-#: src/Payments/PaymentHandler.php:88 src/views/receipt/order_items_table.php:6
+#: src/Payments/PaymentHandler.php:96 src/views/receipt/order_items_table.php:6
 msgid "Price"
 msgstr ""
 
+#: src/Payments/Components/Subscription.php:70
 #: src/Payments/Components/MultiPaymentComponent.php:64
 msgid "Price:"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:507
+#: src/Payments/PaymentHelper.php:522
 msgid "Processing"
+msgstr ""
+
+#: src/Payments/PaymentHandler.php:102
+msgid "Processing payment. Please wait..."
 msgstr ""
 
 #: src/Payments/Components/ItemQuantity.php:116
 msgid "Product Field Mapping"
 msgstr ""
 
-#: src/Payments/PaymentHandler.php:89
+#: src/Payments/PaymentHandler.php:97
 msgid "Qty"
 msgstr ""
 
@@ -1078,12 +1253,21 @@ msgstr ""
 msgid "Quantity"
 msgstr ""
 
-#: src/Payments/PaymentMethods/RazorPay/RazorPayHandler.php:40
+#: src/Payments/PaymentMethods/RazorPay/RazorPayHandler.php:37
 msgid "RazorPay"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:510
+#: src/Payments/PaymentMethods/Paystack/PaystackProcessor.php:128
+#: src/Payments/PaymentMethods/RazorPay/RazorPayProcessor.php:226
+msgid "RazorPay Error: RazorPay does not support subscriptions right now!"
+msgstr ""
+
+#: src/Payments/PaymentHelper.php:525
 msgid "Refunded"
+msgstr ""
+
+#: src/Payments/TransactionShortcodes.php:296
+msgid "Related Payments"
 msgstr ""
 
 #: src/Components/RepeaterField.php:72
@@ -1110,7 +1294,7 @@ msgstr ""
 msgid "Request URL is required"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:487
+#: src/Payments/PaymentHelper.php:502
 msgid "Rwandan Franc"
 msgstr ""
 
@@ -1118,6 +1302,7 @@ msgstr ""
 msgid "Save"
 msgstr ""
 
+#: src/classes/AddressAutoComplete.php:66
 #: src/Integrations/Drip/Bootstrap.php:44
 #: src/Integrations/SendFox/Bootstrap.php:43
 #: src/Integrations/MailerLite/Bootstrap.php:42
@@ -1138,36 +1323,40 @@ msgstr ""
 msgid "Save Settings"
 msgstr ""
 
+#: src/Payments/PaymentMethods/Stripe/StripeInlineProcessor.php:426
+msgid "SCA is required for this payment. Requested SCA info from customer"
+msgstr ""
+
 #: src/Components/Post/EditorSettings.php:98
 msgid "Select"
 msgstr ""
 
-#: src/Components/Post/MetaboxHelper.php:105
-#: src/Components/Post/MetaboxHelper.php:125
+#: src/Components/Post/MetaboxHelper.php:116
+#: src/Components/Post/MetaboxHelper.php:136
 msgid "Select appropriate field for this mapping"
 msgstr ""
 
 #: src/Components/Post/AcfHelper.php:111
-#: src/Components/Post/MetaboxHelper.php:109
-#: src/Components/Post/MetaboxHelper.php:113
+#: src/Components/Post/MetaboxHelper.php:120
+#: src/Components/Post/MetaboxHelper.php:124
 msgid "Select checkbox field for this mapping"
 msgstr ""
 
-#: src/Components/Post/MetaboxHelper.php:129
-#: src/Components/Post/MetaboxHelper.php:133
-#: src/Components/Post/MetaboxHelper.php:137
-#: src/Components/Post/MetaboxHelper.php:141
-#: src/Components/Post/MetaboxHelper.php:149
-#: src/Components/Post/MetaboxHelper.php:153
-#: src/Components/Post/MetaboxHelper.php:157
-#: src/Components/Post/MetaboxHelper.php:161
-#: src/Components/Post/MetaboxHelper.php:165
-#: src/Components/Post/MetaboxHelper.php:169
-#: src/Components/Post/MetaboxHelper.php:173
+#: src/Components/Post/MetaboxHelper.php:140
+#: src/Components/Post/MetaboxHelper.php:144
+#: src/Components/Post/MetaboxHelper.php:148
+#: src/Components/Post/MetaboxHelper.php:152
+#: src/Components/Post/MetaboxHelper.php:160
+#: src/Components/Post/MetaboxHelper.php:164
+#: src/Components/Post/MetaboxHelper.php:168
+#: src/Components/Post/MetaboxHelper.php:172
+#: src/Components/Post/MetaboxHelper.php:176
+#: src/Components/Post/MetaboxHelper.php:180
+#: src/Components/Post/MetaboxHelper.php:184
 msgid "Select Date field for this mapping"
 msgstr ""
 
-#: src/Components/Post/MetaboxHelper.php:145
+#: src/Components/Post/MetaboxHelper.php:156
 msgid "Select File Upload field for this mapping"
 msgstr ""
 
@@ -1184,13 +1373,13 @@ msgid "Select Parent | Select Child"
 msgstr ""
 
 #: src/Components/Post/AcfHelper.php:115 src/Components/Post/AcfHelper.php:119
-#: src/Components/Post/MetaboxHelper.php:117
-#: src/Components/Post/MetaboxHelper.php:121
+#: src/Components/Post/MetaboxHelper.php:128
+#: src/Components/Post/MetaboxHelper.php:132
 msgid "Select radio field for this mapping"
 msgstr ""
 
 #: src/Components/Post/AcfHelper.php:107
-#: src/Components/Post/MetaboxHelper.php:101
+#: src/Components/Post/MetaboxHelper.php:112
 msgid "Select select field for this mapping"
 msgstr ""
 
@@ -1206,7 +1395,7 @@ msgstr ""
 msgid "Select which Product this field is tied to"
 msgstr ""
 
-#: src/Payments/Classes/PaymentEntries.php:144
+#: src/Payments/Classes/PaymentEntries.php:165
 msgid "Selected entries successfully deleted"
 msgstr ""
 
@@ -1246,15 +1435,15 @@ msgstr ""
 msgid "Sendinblue V3 API Key"
 msgstr ""
 
-#: src/Payments/AjaxEndpoints.php:138
+#: src/Payments/AjaxEndpoints.php:146
 msgid "Settings successfully saved"
 msgstr ""
 
-#: src/Payments/AjaxEndpoints.php:116
+#: src/Payments/AjaxEndpoints.php:124
 msgid "Settings successfully updated"
 msgstr ""
 
-#: src/Payments/AjaxEndpoints.php:82
+#: src/Payments/AjaxEndpoints.php:88
 msgid "Settings successfully updated!"
 msgstr ""
 
@@ -1272,7 +1461,7 @@ msgid ""
 "getting form submissions"
 msgstr ""
 
-#: src/Payments/PaymentHandler.php:218
+#: src/Payments/PaymentHandler.php:260
 msgid ""
 "Sorry! No selected payment method found. Please select a valid payment method"
 msgstr ""
@@ -1281,8 +1470,12 @@ msgstr ""
 msgid "Sorry! You do not have permission to activate this license."
 msgstr ""
 
-#: libs/ff_plugin_updater/updater/FluentFormAddOnChecker.php:353
+#: libs/ff_plugin_updater/updater/FluentFormAddOnChecker.php:354
 msgid "Sorry! You do not have permission to deactivate this license."
+msgstr ""
+
+#: src/Payments/Classes/PaymentAction.php:147
+msgid "Sorry, multiple subscription item is not supported"
 msgstr ""
 
 #: src/Payments/Classes/CouponController.php:51
@@ -1293,16 +1486,60 @@ msgstr ""
 msgid "Sorry, You do not have access to this form"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:484
+#: src/Payments/PaymentHelper.php:499
 msgid "South Korean Won"
+msgstr ""
+
+#: src/views/receipt/subscriptions_table.php:5
+#: src/views/receipt/transactions_table.php:8
+msgid "Status"
+msgstr ""
+
+#: src/Payments/PaymentMethods/Stripe/StripeInlineProcessor.php:215
+msgid "Stripe Error: Payment Failed! Please try again."
+msgstr ""
+
+#: src/Payments/PaymentMethods/Stripe/StripeProcessor.php:478
+msgid "Stripe recurring subscription successfully initiated"
+msgstr ""
+
+#: src/Payments/PaymentMethods/Stripe/Components/StripeInline.php:67
+msgid "Stripe test mode activated"
+msgstr ""
+
+#: src/Payments/PaymentMethods/Stripe/API/Customer.php:46
+msgid "Stripe token/payment_method is required"
+msgstr ""
+
+#: src/Payments/PaymentMethods/Stripe/StripeInlineProcessor.php:271
+msgid ""
+"Strong Customer Authentication is required. Please complete 2 factor "
+"authentication."
 msgstr ""
 
 #: src/classes/FormStyler.php:134
 msgid "Styles successfully updated"
 msgstr ""
 
-#: src/views/receipt/order_items_table.php:25
+#: src/views/receipt/order_items_table.php:23
 msgid "Sub-Total"
+msgstr ""
+
+#: src/Payments/Components/Subscription.php:84
+msgid "Subscription Field"
+msgstr ""
+
+#: src/Payments/Components/Subscription.php:49
+msgid "Subscription Item"
+msgstr ""
+
+#: src/Payments/PaymentMethods/PayPal/API/IPN.php:239
+msgid "Subscription status changed from pending to active"
+msgstr ""
+
+#: src/Payments/TransactionShortcodes.php:338
+#: src/Payments/Classes/PaymentReceipt.php:129
+msgid "Subscriptions"
 msgstr ""
 
 #: src/Integrations/IContact/Bootstrap.php:239
@@ -1333,12 +1570,12 @@ msgstr ""
 msgid "The provided coupon is not valid"
 msgstr ""
 
-#: src/Payments/PaymentMethods/Stripe/API/ApiRequest.php:135
-#: src/Payments/PaymentMethods/Stripe/API/ApiRequest.php:160
+#: src/Payments/PaymentMethods/Stripe/API/ApiRequest.php:134
+#: src/Payments/PaymentMethods/Stripe/API/ApiRequest.php:176
 msgid "There was a problem connecting to the Stripe API endpoint."
 msgstr ""
 
-#: libs/ff_plugin_updater/updater/FluentFormAddOnChecker.php:387
+#: libs/ff_plugin_updater/updater/FluentFormAddOnChecker.php:388
 msgid ""
 "There was an error deactivating the license, please try again or contact "
 "support."
@@ -1351,7 +1588,7 @@ msgstr ""
 #: src/Components/NetPromoterScore.php:51 src/Components/RepeaterField.php:64
 #: src/Components/RangeSliderField.php:55
 #: src/Components/PostSelectionField.php:59 src/Components/ColorPicker.php:45
-#: src/Components/PhoneField.php:69
+#: src/Components/PhoneField.php:69 src/Payments/Components/Subscription.php:78
 #: src/Payments/Components/CustomPaymentComponent.php:63
 #: src/Payments/Components/ItemQuantity.php:58
 #: src/Payments/Components/MultiPaymentComponent.php:72
@@ -1374,13 +1611,17 @@ msgstr ""
 msgid "This username is already registered. Please choose another one."
 msgstr ""
 
-#: src/Payments/PaymentHandler.php:91
-#: src/views/receipt/order_items_table.php:37
+#: src/Payments/PaymentHandler.php:99
+#: src/views/receipt/order_items_table.php:35
 msgid "Total"
 msgstr ""
 
 #: src/views/receipt/payment_info.php:11
 msgid "Total:"
+msgstr ""
+
+#: src/views/receipt/transaction_info.php:3
+msgid "Transaction #"
 msgstr ""
 
 #: src/Integrations/Trello/Bootstrap.php:53
@@ -1400,7 +1641,7 @@ msgid ""
 "href=\"https://www.trello.com/\" target=\"_blank\">sign up for one here.</a>"
 msgstr ""
 
-#: libs/ff_plugin_updater/updater/FluentFormAddOnChecker.php:413
+#: libs/ff_plugin_updater/updater/FluentFormAddOnChecker.php:415
 msgid "Unable to deactivate license, please try again or contact support."
 msgstr ""
 
@@ -1408,7 +1649,7 @@ msgstr ""
 msgid "Unconfirmed"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:489
+#: src/Payments/PaymentHelper.php:504
 msgid "Vanuatu Vatu"
 msgstr ""
 
@@ -1424,41 +1665,66 @@ msgstr ""
 msgid "Verify Trello "
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:488
+#: src/Payments/PaymentMethods/Stripe/StripeInlineProcessor.php:170
+msgid "Verifying your card details. Please wait..."
+msgstr ""
+
+#: src/Payments/PaymentHelper.php:503
 msgid "Vietnamese Dong"
 msgstr ""
 
-#: src/Payments/PaymentHelper.php:491
+#: src/Payments/TransactionShortcodes.php:333
+msgid "View"
+msgstr ""
+
+#: src/views/receipt/user_subscriptions_table.php:31
+msgid "View Payments"
+msgstr ""
+
+#: src/Payments/PaymentHelper.php:506
 msgid "West African Cfa Franc"
+msgstr ""
+
+#: src/Payments/TransactionShortcodes.php:177
+msgid "will be billed until cancelled"
+msgstr ""
+
+#: src/Payments/TransactionShortcodes.php:175
+#, php-format
+msgid "Will be cancelled after %d payments"
 msgstr ""
 
 #. Author of the plugin
 msgid "WP Fluent Forms"
 msgstr ""
 
-#: libs/ff_plugin_updater/ff-fluentform-pro-update.php:41
+#: libs/ff_plugin_updater/ff-fluentform-pro-update.php:42
 msgid "WP Fluent Forms Pro Add On"
 msgstr ""
 
-#: src/Payments/PaymentMethods/Mollie/MollieProcessor.php:123
+#: src/Payments/TransactionShortcodes.php:340
+msgid "Yes, cancel this subscription"
+msgstr ""
+
+#: src/Payments/PaymentMethods/Mollie/MollieProcessor.php:132
 msgid ""
 "You are redirecting to Mollie.com to complete the purchase. Please wait "
 "while you are redirecting...."
 msgstr ""
 
-#: src/Payments/PaymentMethods/PayPal/PayPalProcessor.php:127
+#: src/Payments/PaymentMethods/PayPal/PayPalProcessor.php:151
 msgid ""
 "You are redirecting to PayPal.com to complete the purchase. Please wait "
 "while you are redirecting...."
 msgstr ""
 
-#: src/Payments/PaymentMethods/RazorPay/RazorPayProcessor.php:118
+#: src/Payments/PaymentMethods/RazorPay/RazorPayProcessor.php:124
 msgid ""
 "You are redirecting to razorpay.com to complete the purchase. Please wait "
 "while you are redirecting...."
 msgstr ""
 
-#: src/Payments/PaymentMethods/Stripe/StripeProcessor.php:148
+#: src/Payments/PaymentMethods/Stripe/StripeProcessor.php:197
 msgid ""
 "You are redirecting to stripe.com to complete the purchase. Please wait "
 "while you are redirecting...."
@@ -1658,6 +1924,7 @@ msgstr ""
 msgid "Your settings has been updated"
 msgstr ""
 
+#: src/classes/AddressAutoComplete.php:97
 #: src/Integrations/Hubspot/Bootstrap.php:87
 #: src/Integrations/Platformly/Bootstrap.php:98
 msgid "Your settings has been updated and discarded"
@@ -1684,6 +1951,10 @@ msgstr ""
 msgid "Your settings has been updated!"
 msgstr ""
 
+#: src/Payments/TransactionShortcodes.php:420
+msgid "Your subscription has been cancelled. Refreshing the page..."
+msgstr ""
+
 #: src/Integrations/Trello/Bootstrap.php:45
 msgid "Your Trello configuration is invalid"
 msgstr ""
@@ -1702,4 +1973,14 @@ msgstr ""
 
 #: src/Integrations/SMSNotification/Bootstrap.php:41
 msgid "Your Twillio API Key is valid"
+msgstr ""
+
+#: src/Payments/PaymentHelper.php:820
+msgid ""
+"{first_interval_total} for first {billing_interval} then "
+"{subscription_amount} for each {billing_interval}"
+msgstr ""
+
+#: src/Payments/PaymentHelper.php:823
+msgid "{subscription_amount} for each {billing_interval}"
 msgstr ""

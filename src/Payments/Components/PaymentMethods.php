@@ -6,8 +6,8 @@ if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly.
 }
 
-use FluentForm\App\Services\FormBuilder\BaseFieldManager;
 use FluentForm\Framework\Helpers\ArrayHelper;
+use FluentForm\App\Services\FormBuilder\BaseFieldManager;
 
 class PaymentMethods extends BaseFieldManager
 {
@@ -26,8 +26,8 @@ class PaymentMethods extends BaseFieldManager
             [$this, 'recheckEditorComponent']
         );
 
-        add_filter('fluentform_response_render_'.$this->key, function ($value) {
-            if($value == 'test') {
+        add_filter('fluentform_response_render_' . $this->key, function ($value) {
+            if ($value == 'test') {
                 return 'Offline';
             }
             return $value;
@@ -44,27 +44,27 @@ class PaymentMethods extends BaseFieldManager
         }
 
         return [
-            'index' => 10,
-            'element' => $this->key,
-            'attributes' => [
-                'name' => $this->key,
-                'type' => 'radio',
+            'index'          => 10,
+            'element'        => $this->key,
+            'attributes'     => [
+                'name'  => $this->key,
+                'type'  => 'radio',
                 'value' => ''
             ],
-            'settings' => [
-                'container_class' => '',
-                'label' => $this->title,
-                'default_method' => '',
-                'label_placement' => '',
-                'help_message' => '',
-                'payment_methods' => $available_methods,
-                'admin_field_label' => '',
+            'settings'       => [
+                'container_class'    => '',
+                'label'              => $this->title,
+                'default_method'     => '',
+                'label_placement'    => '',
+                'help_message'       => '',
+                'payment_methods'    => $available_methods,
+                'admin_field_label'  => '',
                 'conditional_logics' => []
             ],
             'editor_options' => [
-                'title' => $this->title . ' Field',
+                'title'      => $this->title . ' Field',
                 'icon_class' => 'ff-edit-credit-card',
-                'template' => 'inputPaymentMethods'
+                'template'   => 'inputPaymentMethods'
             ],
         ];
     }
@@ -73,7 +73,7 @@ class PaymentMethods extends BaseFieldManager
     {
         $available_methods = apply_filters('fluentformpro_available_payment_methods', []);
 
-        if(!$available_methods) {
+        if (!$available_methods) {
             $component['settings']['payment_methods'] = $available_methods;
             return $component;
         }
@@ -83,7 +83,7 @@ class PaymentMethods extends BaseFieldManager
         $updatedMethods = [];
 
         foreach ($available_methods as $methodName => $method) {
-            if(isset($existingMethods[$methodName])) {
+            if (isset($existingMethods[$methodName])) {
                 $method['settings'] = wp_parse_args($existingMethods[$methodName]['settings'], $method['settings']);
                 $method['enabled'] = $existingMethods[$methodName]['enabled'];
             } else {
@@ -122,20 +122,20 @@ class PaymentMethods extends BaseFieldManager
     function render($data, $form)
     {
         $elementName = $data['element'];
-        $data = apply_filters('fluentform_rendering_field_data_'.$elementName, $data, $form);
+        $data = apply_filters('fluentform_rendering_field_data_' . $elementName, $data, $form);
 
         $data['attributes']['class'] = trim(
             'ff-el-form-check-input ' .
             ArrayHelper::get($data, 'attributes.class')
         );
 
-        $paymentMethods = $formattedOptions = ArrayHelper::get($data, 'settings.payment_methods');
+        $paymentMethods = ArrayHelper::get($data, 'settings.payment_methods');
         $available_methods = apply_filters('fluentformpro_available_payment_methods', []);
         $activatedMethods = [];
 
         foreach ($paymentMethods as $methodName => $paymentMethod) {
             $enabled = ArrayHelper::get($paymentMethod, 'enabled');
-            if($enabled == 'yes' && isset($available_methods[$methodName])) {
+            if ($enabled == 'yes' && isset($available_methods[$methodName])) {
                 $activatedMethods[$methodName] = $paymentMethod;
             }
         }
@@ -143,17 +143,19 @@ class PaymentMethods extends BaseFieldManager
         if (!$activatedMethods) {
             echo wp_sprintf(
                 '<p class="ff-error ff-payment-method-error">%s</p>',
-                 __('No activated payment method found. If you are an admin please check the payment settings', 'fluentformpro')
-             );
+                __('No activated payment method found. If you are an admin please check the payment settings', 'fluentformpro')
+            );
             return;
         }
 
         foreach ($activatedMethods as $methodName => $activatedMethod) {
             do_action(
-                'fluentform_rending_payment_method_'.$methodName, $activatedMethod, $data, $form
+                'fluentform_rendering_payment_method_' . $methodName, $activatedMethod, $data, $form
             );
         }
 
+
+        $data['attributes']['class'] = $data['attributes']['class'] . ' ff_payment_method';
 
         if (count($activatedMethods) == 1) {
             $methodKeys = array_keys($activatedMethods);
@@ -161,10 +163,23 @@ class PaymentMethods extends BaseFieldManager
             $methodElement = $activatedMethods[$methodName];
             $data['attributes']['type'] = 'hidden';
             $data['attributes']['value'] = $methodName;
-            $data['attributes']['class'] = 'ff_selected_payment_method';
-            echo "<input ".$this->buildAttributes($data['attributes'], $form).">";
-            do_action('fluentform_payment_method_render_'.$methodName, $methodElement, $form);
-			return;
+            $data['attributes']['class'] .= ' ff_selected_payment_method';
+            $elMarkup = $html = "<input " . $this->buildAttributes($data['attributes'], $form) . ">";
+
+            $method = $activatedMethods[$methodName];
+            $method['is_default'] = true;
+            $selectedMarkups = apply_filters('fluentform_payment_method_contents_' . $methodName, '', $method, $data, $form);
+
+            if ($selectedMarkups) {
+                $elMarkup .= $selectedMarkups;
+                $data['settings']['label'] = '';
+                $html = $this->buildElementMarkup($elMarkup, $data, $form);
+            }
+
+            echo apply_filters('fluentform_rendering_field_html_' . $elementName, $html, $data, $form);
+
+            do_action('fluentform_payment_method_render_' . $methodName, $methodElement, $form);
+            return;
         }
 
         $elMarkup = '';
@@ -184,13 +199,17 @@ class PaymentMethods extends BaseFieldManager
 
         $firstTabIndex = \FluentForm\App\Helpers\Helper::getNextTabIndex();
 
+        $selectedMarkups = '';
+
         foreach ($activatedMethods as $methodName => $method) {
             $parentClass = "ff-el-form-check ff-el-payment-method-label";
             if ($methodName == $defaultValue) {
+                $method['is_default'] = true;
                 $data['attributes']['checked'] = true;
                 $parentClass .= ' ff_item_selected';
             } else {
                 $data['attributes']['checked'] = false;
+                $method['is_default'] = false;
             }
 
             if ($firstTabIndex) {
@@ -199,11 +218,11 @@ class PaymentMethods extends BaseFieldManager
             }
 
             $data['attributes']['value'] = $methodName;
-            $data['attributes']['type']  = 'radio';
+            $data['attributes']['type'] = 'radio';
 
             $methodLabel = ArrayHelper::get($method, 'settings.option_label.value');
 
-            if($methodLabel) {
+            if ($methodLabel) {
                 $method['title'] = $methodLabel;
             }
 
@@ -216,20 +235,20 @@ class PaymentMethods extends BaseFieldManager
             }
 
             $elMarkup .= "<div class='{$parentClass}'>";
-            // Here we can push the visual items
-            if ($hasImageOption) {
-                //$elMarkup .= "<label style='background-image: url({$available_methods[$methodName]['image']})' class='ff-el-image-input-src' for={$id}></label>";
-            }
 
             $elMarkup .= "<label class='ff-el-form-check-label' for={$id}><input {$atts} id='{$id}'> <span>{$method['title']}</span></label>";
             $elMarkup .= "</div>";
+
+            $selectedMarkups .= apply_filters('fluentform_payment_method_contents_' . $methodName, '', $method, $data, $form);
         }
 
         if ($hasImageOption) {
             $elMarkup .= '</div>';
         }
 
+        $elMarkup .= $selectedMarkups;
+
         $html = $this->buildElementMarkup($elMarkup, $data, $form);
-        echo apply_filters('fluentform_rendering_field_html_'.$elementName, $html, $data, $form);
+        echo apply_filters('fluentform_rendering_field_html_' . $elementName, $html, $data, $form);
     }
 }

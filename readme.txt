@@ -4,7 +4,7 @@ Tags: contact form, form builder, forms, form creator, custom form, custom form,
 Requires at least: 4.5
 Tested up to: 5.8.0
 Requires PHP: 5.4
-Stable tag: 4.1.5
+Stable tag: 4.2.0
 
 Advanced Contact form plugin with drag and drop, multi column supported form builder plugin
 
@@ -25,6 +25,16 @@ Manual Install:
 Upload the plugin files to the /wp-content/plugins/ directory, then activate the plugin.
 
 == Change Log ==
+
+= 4.2.0 (Date: Sep 01, 2021) =
+- Subscription Payments
+- Stripe Inline element checkout
+- Paystack Payment method
+- Razorpay modal payments
+- Google Map API integration for Address field
+- Manage Payments and subscription for user portal
+- New "Stripe Connect" API implementation
+- Calculate values with Repeater Field
 
 = 4.1.5 (Date: July 13, 2021) =
 - Improvements on Conversational Forms

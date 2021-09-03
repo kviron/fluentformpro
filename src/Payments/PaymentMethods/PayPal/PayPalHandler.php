@@ -7,7 +7,7 @@ if (!defined('ABSPATH')) {
 }
 
 use FluentForm\Framework\Helpers\ArrayHelper;
-use FluentFormPro\Payments\Components\PaymentMethods;
+use FluentFormPro\Payments\PaymentMethods\PayPal\API\IPN;
 
 class PayPalHandler
 {
@@ -20,7 +20,7 @@ class PayPalHandler
             return PayPalSettings::getSettings();
         });
 
-        add_filter('payment_method_settings_validation_'.$this->key, array($this, 'validateSettings'), 10, 2);
+        add_filter('fluentform_payment_method_settings_validation_'.$this->key, array($this, 'validateSettings'), 10, 2);
 
         if(!$this->isEnabled()) {
             return;
@@ -33,6 +33,7 @@ class PayPalHandler
             [$this, 'pushPaymentMethodToForm']
         );
 
+	    (new IPN())->init();
         (new PayPalProcessor())->init();
     }
 

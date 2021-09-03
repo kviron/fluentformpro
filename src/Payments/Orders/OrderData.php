@@ -12,15 +12,20 @@ class OrderData
 {
     public static function getSummary($submission, $form)
     {
-        $orderItems = self::getOrderItems($submission);
-        $discountItems = self::getDiscounts($submission);
+        $orderItems = static::getOrderItems($submission);
+        $discountItems = static::getDiscounts($submission);
+
+        list($subscriptions, $subscriptionPaymentTotal) = static::getSubscriptionsAndPaymentTotal($submission);
+
         return [
-            'order_items' => $orderItems,
-            'discount_items' => $discountItems,
-            'transactions' => self::getTransactions($submission->id),
-            'refunds' => self::getRefunds($submission->id),
-            'order_items_subtotal' => self::calculateOrderItemsTotal($orderItems, false, false),
-            'order_items_total' => self::calculateOrderItemsTotal($orderItems, false, false, $discountItems)
+	        'order_items'                => $orderItems,
+	        'discount_items'             => $discountItems,
+	        'transactions'               => static::getTransactions($submission->id),
+	        'refunds'                    => static::getRefunds($submission->id),
+	        'order_items_subtotal'       => static::calculateOrderItemsTotal($orderItems, false, false),
+	        'order_items_total'          => static::calculateOrderItemsTotal($orderItems, false, false, $discountItems),
+	        'subscriptions'              => $subscriptions,
+	        'subscription_payment_total' => $subscriptionPaymentTotal
         ];
     }
 
@@ -28,7 +33,7 @@ class OrderData
     {
         $items = wpFluent()->table('fluentform_order_items')
             ->where('submission_id', $submission->id)
-            ->where('type', 'single')
+	        ->where('type', '!=', 'discount') // type = single, signup_fee
             ->get();
 
         foreach ($items as $item) {
@@ -58,7 +63,7 @@ class OrderData
     {
         $transactions = wpFluent()->table('fluentform_transactions')
             ->where('submission_id', $submissionId)
-            ->where('transaction_type', 'onetime')
+            ->whereIn('transaction_type', ['onetime', 'subscription'])
             ->orderBy('id', 'ASC')
             ->get();
 
@@ -112,4 +117,43 @@ class OrderData
 
         return $total;
     }
+
+	public static function getSubscriptionsAndPaymentTotal($submission)
+	{
+		$subscriptions = wpFluent()->table('fluentform_subscriptions')
+			->where('submission_id', $submission->id)
+			->get();
+
+		$subscriptionPaymentTotal = 0;
+
+		foreach ($subscriptions as $subscription) {
+			$subscription->original_plan = maybe_unserialize($subscription->original_plan);
+			$subscription->vendor_response = maybe_unserialize($subscription->vendor_response);
+
+			$subscription->initial_amount_formatted = PaymentHelper::formatMoney($subscription->initial_amount, $submission->currency);
+			$subscription->recurring_amount_formatted = PaymentHelper::formatMoney($subscription->recurring_amount, $submission->currency);
+		}
+
+		return [$subscriptions, $subscriptionPaymentTotal];
+	}
+
+	public static function getSubscriptionTransactions($subscriptionId)
+	{
+		$transactions = wpFluent()->table('fluentform_transactions')
+			->where('subscription_id', $subscriptionId)
+			->get();
+
+		foreach ($transactions as $transaction) {
+			$transaction->payment_note = maybe_unserialize($transaction->payment_note);
+
+			$transaction->items = apply_filters('fluentform_subscription_items_'.$transaction->payment_method, [], $transaction);
+		}
+
+		return apply_filters('fluentform_subscription_transactions', $transactions, $subscriptionId);
+	}
+
+	public static function getTotalPaid($submission)
+	{
+		return PaymentHelper::formatMoney($submission->payment_total, $submission->currency);
+	}
 }

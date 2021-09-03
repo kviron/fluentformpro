@@ -18,15 +18,10 @@ class StripeListener
 
     public function verifyIPN()
     {
-       // $signature = $_SERVER['HTTP_STRIPE_SIGNATURE'];
+        // $signature = $_SERVER['HTTP_STRIPE_SIGNATURE'];
 
         // retrieve the request's body and parse it as JSON
         $body = @file_get_contents('php://input');
-
-//        $this->verifySignature($body, $signature);
-//
-//        print_r($signature);
-//        die();
 
         $event = json_decode($body);
 
@@ -40,21 +35,24 @@ class StripeListener
             status_header(200);
             try {
                 $formId = StripeSettings::guessFormIdFromEvent($event);
+
                 $event = $this->retrive($eventId, $formId);
 
                 if ($event && !is_wp_error($event)) {
                     $eventType = $event->type;
 
-                    if ($eventType == 'charge.succeeded') {
-                     //   $this->handleChargeSucceeded($event);
+                    if ($eventType == 'charge.succeeded' || $eventType == 'charge.captured') {
+                        $this->handleChargeSucceeded($event);
                     } else if ($eventType == 'invoice.payment_succeeded') {
-                     //   $this->maybeHandleSubscriptionPayment($event);
+                        $this->maybeHandleSubscriptionPayment($event);
                     } else if ($eventType == 'charge.refunded') {
                         $this->handleChargeRefund($event);
                     } else if ($eventType == 'customer.subscription.deleted') {
-                    //    $this->handleSubscriptionCancelled($event);
+                        $this->handleSubscriptionCancelled($event);
                     } else if ($eventType == 'checkout.session.completed') {
                         $this->handleCheckoutSessionCompleted($event);
+                    } else if($eventType == 'customer.subscription.updated') {
+                        // maybe we have to handle the
                     }
                 }
             } catch (\Exception $e) {
@@ -71,21 +69,40 @@ class StripeListener
     private function handleChargeSucceeded($event)
     {
         $charge = $event->data->object;
-        $transaction = wpPayFormDB()->table('wpf_order_transactions')
-            ->where('charge_id', $charge->id)
-            ->where('payment_method', 'stripe')
-            ->first();
+
+        $meta = (array) $charge->metadata;
+
+        $transactionId = ArrayHelper::get($meta, 'transaction_id');
+
+        if(!$transactionId) {
+            $transaction = wpFluent()->table('fluentform_transactions')
+                ->where('charge_id', $charge->payment_intent)
+                ->first();
+            if(!$transaction) {
+                return;
+            }
+        } else {
+            $submissionId = ArrayHelper::get($meta, 'submission_id');
+            $transaction = wpFluent()->table('fluentform_transactions')
+                ->where('submission_id', $submissionId)
+                ->where('id', $transactionId)
+                ->where('payment_method', 'stripe')
+                ->first();
+        }
 
         if (!$transaction) {
             return;
         }
 
-        do_action('wppayform/form_submission_activity_start', $transaction->form_id);
+        if($transaction->status == 'paid') {
+            return; // Already paid we don't have to do anything here
+        }
 
         // We have the transaction so we have to update some fields
         $updateData = array(
             'status' => 'paid'
         );
+
         if (!$transaction->card_last_4) {
             if (!empty($charge->source->last4)) {
                 $updateData['card_last_4'] = $charge->source->last4;
@@ -101,9 +118,16 @@ class StripeListener
             }
         }
 
-        wpFluent()->table('wpf_order_transactions')
+        if(!$transaction->charge_id) {
+            $updateData['charge_id'] = $charge->payment_intent;
+        }
+
+        wpFluent()->table('fluentform_transactions')
             ->where('id', $transaction->id)
             ->update($updateData);
+
+        // We have to fire transaction paid hook here
+
     }
 
     /*
@@ -113,16 +137,18 @@ class StripeListener
     private function maybeHandleSubscriptionPayment($event)
     {
         $data = $event->data->object;
+
         $subscriptionId = false;
         if (property_exists($data, 'subscription')) {
             $subscriptionId = $data->subscription;
         }
+
         if (!$subscriptionId) {
             return;
         }
 
-        $subscription = wpFluent()->table('wpf_subscriptions')
-            ->where('vendor_subscriptipn_id', $subscriptionId)
+        $subscription = wpFluent()->table('fluentform_subscriptions')
+            ->where('vendor_subscription_id', $subscriptionId)
             ->where('vendor_customer_id', $data->customer)
             ->first();
 
@@ -130,81 +156,32 @@ class StripeListener
             return;
         }
 
+        $submission = wpFluent()->table('fluentform_submissions')
+            ->where('id', $subscription->submission_id)
+            ->first();
 
-        $submissionModel = new Submission();
-        $submission = $submissionModel->getSubmission($subscription->submission_id);
         if (!$submission) {
             return;
         }
 
-        do_action('wppayform/form_submission_activity_start', $submission->form_id);
+        $transactionData = $this->createSubsTransactionDataFromInvoice($data, $subscription, $submission);
 
-        // Maybe Insert The transaction Now
-        $subscriptionTransaction = new SubscriptionTransaction();
+        // We may have an already exist session charge that we have to update
+        $pendingTransaction = wpFluent()->table('fluentform_transactions')
+            ->whereNull('charge_id')
+            ->where('submission_id', $submission->id)
+            ->where('status', 'pending')
+            ->first();
 
-        $totalAmount = $data->total;
-        if (GeneralSettings::isZeroDecimal($data->currency)) {
-            $totalAmount = intval($totalAmount * 100);
-        }
+        if($pendingTransaction) {
+            unset($transactionData['transaction_hash']);
+            unset($transactionData['created_at']);
 
-        $transactionId = $subscriptionTransaction->maybeInsertCharge([
-            'form_id' => $submission->form_id,
-            'user_id' => $submission->user_id,
-            'submission_id' => $submission->id,
-            'subscription_id' => $subscription->id,
-            'transaction_type' => 'subscription',
-            'payment_method' => 'stripe',
-            'charge_id' => $data->charge,
-            'payment_total' => $totalAmount,
-            'status' => $data->status,
-            'currency' => $data->currency,
-            'payment_mode' => ($data->livemode) ? 'live' : 'test',
-            'payment_note' => maybe_serialize($data),
-            'created_at' => date('Y-m-d H:i:s', $data->created + (int) ( get_option( 'gmt_offset' ) * HOUR_IN_SECONDS )),
-            'updated_at' => date('Y-m-d H:i:s', $data->created + (int) ( get_option( 'gmt_offset' ) * HOUR_IN_SECONDS ))
-        ]);
-
-        $transaction = $subscriptionTransaction->getTransaction($transactionId);
-
-        $subscriptionModel = new Subscription();
-
-        $subscriptionModel->update($subscription->id, [
-            'status' => 'active'
-        ]);
-
-        $mainSubscription = $subscriptionModel->getSubscription($subscription->id);
-
-        $isNewPayment = $subscription->bill_count != $mainSubscription->bill_count;
-
-        // Check For Payment EOT
-        if ($mainSubscription->bill_times && $mainSubscription->bill_count >= $mainSubscription->bill_times) {
-
-            // We have to cancel this subscription as total bill times done
-            $response = ApiRequest::request([
-                'cancel_at_period_end' => 'true'
-            ], 'subscriptions/' . $mainSubscription->vendor_subscriptipn_id, 'POST');
-
-            if (!is_wp_error($response)) {
-                $subscriptionModel->update($mainSubscription->id, [
-                    'status' => 'completed'
-                ]);
-                SubmissionActivity::createActivity(array(
-                    'form_id' => $submission->form_id,
-                    'submission_id' => $submission->id,
-                    'type' => 'activity',
-                    'created_by' => 'PayForm BOT',
-                    'content' => __('The Subscription Term Period has been completed', 'wppayform')
-                ));
-                $updatedSubscription = $subscriptionModel->getSubscription($subscription->id);
-                do_action('wppayform/subscription_payment_eot_completed', $submission, $updatedSubscription, $submission->form_id, $response);
-                do_action('wppayform/subscription_payment_eot_completed_stripe', $submission, $updatedSubscription, $submission->form_id, $response);
-            }
-        }
-
-        if ($isNewPayment) {
-            // New Payment Made so we have to fire some events here
-            do_action('wppayform/subscription_payment_received', $submission, $transaction, $submission->form_id, $subscription);
-            do_action('wppayform/subscription_payment_received_stripe', $submission, $transaction, $submission->form_id, $subscription);
+            wpFluent()->table('fluentform_transactions')
+                ->where('id', $pendingTransaction->id)
+                ->update($transactionData);
+        } else {
+            (new StripeProcessor())->recordSubscriptionCharge($subscription, $transactionData);
         }
     }
 
@@ -225,34 +202,19 @@ class StripeListener
     {
         $data = $event->data->object;
         $subscriptionId = $data->id;
-        $subscriptionModel = new Subscription();
 
-        $subscription = wpFluent()->table('wpf_subscriptions')
-            ->where('vendor_subscriptipn_id', $subscriptionId)
+        $subscription = wpFluent()->table('fluentform_subscriptions')
+            ->where('vendor_subscription_id', $subscriptionId)
             ->where('status', '!=', 'completed')
             ->first();
 
-        if (!$subscription) {
+        if (!$subscription || $subscription->status == 'cancelled') {
             return;
         }
 
-        do_action('wppayform/form_submission_activity_start', $subscription->form_id);
+        do_action('fluentform_form_submission_activity_start', $subscription->form_id);
 
-
-        $subscriptionModel->update($subscription->id, [
-            'status' => 'cancelled'
-        ]);
-
-
-        $subscription = $subscriptionModel->getSubscription($subscription->id);
-
-        $submissionModel = new Submission();
-        $submission = $submissionModel->getSubmission($subscription->submission_id);
-
-        // New Payment Made so we have to fire some events here
-        do_action('wppayform/subscription_payment_canceled', $submission, $subscription, $submission->form_id, $data);
-        do_action('wppayform/subscription_payment_canceled_stripe', $submission, $subscription, $submission->form_id, $data);
-
+        PaymentHelper::recordSubscriptionCancelled($subscription, $data);
     }
 
 
@@ -260,23 +222,22 @@ class StripeListener
     {
         $data = $event->data->object;
 
-        $metaData = (array) $data->metadata;
+        $metaData = (array)$data->metadata;
 
         $formId = ArrayHelper::get($metaData, 'form_id');
 
         $session = CheckoutSession::retrieve($data->id, [
             'expand' => [
-                'payment_intent.customer'
+                'subscription.latest_invoice.payment_intent',
+                'payment_intent'
             ]
         ], $formId);
 
-        if (!$session || is_wp_error($session) || empty($session->payment_intent)) {
+        if (!$session || is_wp_error($session)) {
             return;
         }
 
-
         $submissionId = intval($session->client_reference_id);
-
         if (!$session || !$submissionId) {
             return;
         }
@@ -288,24 +249,29 @@ class StripeListener
         // let's get the pending submission
         $submission = wpFluent()->table('fluentform_submissions')
             ->where('id', $submissionId)
-            ->where('payment_status', 'pending')
             ->first();
+
         if (!$submission) {
+            return;
+        }
+
+        $transactionId = ArrayHelper::get($metaData, 'transaction_id');
+
+        if(!$transactionId) {
             return;
         }
 
         $transaction = wpFluent()->table('fluentform_transactions')
             ->where('form_id', $submission->form_id)
-            ->where('status', 'pending')
+            ->where('id', $transactionId)
             ->where('submission_id', $submission->id)
             ->first();
-        // Let get the transaction now
-        if(!$transaction) {
-            return;
+
+        if(!$transaction || $transaction->status == 'paid') {
+            return; // not our transaction or transaction_status already paid
         }
 
         $returnData = (new StripeProcessor())->processStripeSession($session, $submission, $transaction);
-
     }
 
     /*
@@ -333,7 +299,7 @@ class StripeListener
 
         $signedPayload = "{$timestamp}.{$payload}";
 
-        if(!function_exists('hash_hmac')) {
+        if (!function_exists('hash_hmac')) {
             return false;
         }
 
@@ -342,7 +308,7 @@ class StripeListener
         $expectedSignature = \hash_hmac('sha256', $payload, $secret);
 
         foreach ($signatures as $signature) {
-            if($this->secureCompare($signature, $expectedSignature)) {
+            if ($this->secureCompare($signature, $expectedSignature)) {
                 return true;
             }
         }
@@ -361,7 +327,7 @@ class StripeListener
                     return -1;
                 }
 
-                return (int) ($itemParts[1]);
+                return (int)($itemParts[1]);
             }
         }
 
@@ -401,4 +367,54 @@ class StripeListener
         return 0 === $result;
     }
 
+    protected function createSubsTransactionDataFromInvoice($invoice, $subscription, $submission)
+    {
+        $paymentIntent = false;
+        if(!is_object($invoice->payment_intent)) {
+            ApiRequest::set_secret_key(StripeSettings::getSecretKey($subscription->form_id));
+            $paymentIntent = ApiRequest::request([], 'payment_intents/'.$invoice->payment_intent, 'GET');
+            if(is_wp_error($paymentIntent)) {
+                $paymentIntent = false;
+            }
+            $chargeId = $invoice->payment_intent;
+        } else {
+            $chargeId = $invoice->payment_intent->id;
+            $paymentIntent = $invoice->payment_intent;
+        }
+
+        $paymentTotal = $invoice->amount_paid;
+        if(PaymentHelper::isZeroDecimal($invoice->currency)) {
+            $paymentTotal = $paymentTotal * 100;
+        }
+
+        $data = [
+            'subscription_id' => $subscription->id,
+            'form_id' => $subscription->form_id,
+            'transaction_hash' => md5('subscription_trans_'.wp_generate_uuid4().time()),
+            'user_id' => $submission->user_id,
+            'submission_id' => $submission->id,
+            'transaction_type' => 'subscription',
+            'payment_method' => 'stripe',
+            'card_last_4' => '',
+            'card_brand' => '',
+            'payer_name' => $invoice->customer_name,
+            'payer_email' => $invoice->customer_email,
+            'charge_id' => $chargeId,
+            'payment_total' => $paymentTotal,
+            'status' => 'paid',
+            'currency' => strtoupper($invoice->currency),
+            'payment_mode' => ($invoice->livemode) ? 'live' : 'test',
+            'payment_note' => maybe_serialize($invoice),
+            'created_at' => current_time('mysql'),
+            'updated_at' => current_time('mysql'),
+        ];
+
+        if($paymentIntent && !empty($paymentIntent->charges->data[0]->payment_method_details->card)) {
+            $card = $paymentIntent->charges->data[0]->payment_method_details->card;
+            $data['card_brand'] = $card->brand;
+            $data['card_last_4'] = $card->last4;
+        }
+
+        return $data;
+    }
 }

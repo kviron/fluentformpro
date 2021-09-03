@@ -304,6 +304,7 @@ class FluentFormAddOnChecker
             $license_data = json_decode(wp_remote_retrieve_body($response));
         }
 
+
         // $license_data->license will be either "valid" or "invalid"
         if ($license_data->license) {
             if ($license_data->license == 'invalid' && $license_data->error == 'expired') {
@@ -390,11 +391,12 @@ class FluentFormAddOnChecker
                 return false;
             }
 
+
             // decode the license data
             $license_data = json_decode(wp_remote_retrieve_body($response));
 
             // $license_data->license will be either "deactivated" or "failed"
-            if ('deactivated' == $license_data->license || $license_data->license == 'failed') {
+            if ($license_data && ('deactivated' == $license_data->license || $license_data->license == 'failed')) {
                 $this->setLicenseStatus(false);
                 $this->setLicenseKey(false);
                 delete_option($this->get_var('license_status') . '_checking');
@@ -634,7 +636,7 @@ class FluentFormAddOnChecker
             $licenseKey = $this->getSavedLicenseKey();
         }
         if ($licenseKey) {
-            $renewUrl = $this->get_var('store_url') . '/checkout/?edd_license_key=' . $licenseKey . '&download_id=' . $this->get_var('item_id');
+            $renewUrl = $this->get_var('store_site') . '/checkout/?edd_license_key=' . $licenseKey . '&download_id=' . $this->get_var('item_id');
         } else {
             $renewUrl = $this->get_var('purchase_url');
         }
